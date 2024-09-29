@@ -1,0 +1,18 @@
+[Unit]
+Description=Smart Wi-Fi Manager Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash /path/to/smart-wifi-manager/smart-wifi-manager.sh
+WorkingDirectory=/path/to/smart-wifi-manager
+Restart=on-failure
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=smart-wifi-manager
+
+
+[Install]
+WantedBy=multi-user.target
