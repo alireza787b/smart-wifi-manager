@@ -13,8 +13,25 @@ Smart Wi-Fi Manager is a Bash script and systemd service for Raspberry Pi device
 
 ## Prerequisites
 
-- Raspberry Pi running a Linux distribution with `nmcli` (NetworkManager) installed.
+- Raspberry Pi running a Linux distribution with `nmcli` (NetworkManager) installed. Before installing Smart Wi-Fi Manager, ensure that `NetworkManager` and `nmcli` are installed on your system.
+  
+```bash
+sudo apt update
+sudo apt install network-manager
+```
+
+Note: Some Raspberry Pi distributions may use dhcpcd by default. You may need to disable dhcpcd and enable NetworkManager.
+```bash
+sudo systemctl stop dhcpcd
+sudo systemctl disable dhcpcd
+
+sudo systemctl enable NetworkManager
+sudo systemctl start NetworkManager
+```
+
 - Root privileges to install and run the script as a service.
+
+
 
 ## Installation
 
@@ -138,93 +155,6 @@ sudo rm /etc/systemd/system/smart-wifi-manager.service
 sudo systemctl daemon-reload
 ```
 
-## Technical Details
-
-- **Scanning Networks:** Uses `nmcli` to scan for available Wi-Fi networks.
-- **Signal Evaluation:** Parses scan results to determine the strongest known network.
-- **Known Networks:** Loads known networks from `known_networks.conf` during each scan.
-- **Decision Logic:** Switches networks if a stronger known network is found and the signal improvement exceeds a predefined threshold.
-- **Connection Handling:** Securely handles connections to both password-protected and open networks.
-- **Logging and Locking:** Implements logging and uses a lock file to prevent multiple instances.
-
-## Contributing
-
-Contributions are welcome! Please fork the repository and submit a pull request for any improvements or bug fixes.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-If you encounter any issues or have questions, feel free to open an issue in the repository.
-
-## Acknowledgments
-
-Special thanks to all contributors and the open-source community for their support.
-```
-
-**Key Updates:**
-
-- **Security Notice:** Added a section to inform users that passwords are stored in plain text and advise them to secure their networks accordingly.
-- **Service Management Guide:** Provided instructions on how to view logs using `journalctl`, restart the service, check its status, and stop the service.
-- **Clarity and Ease of Use:** Reviewed and updated the steps to ensure they are clear and user-friendly.
-
----
-
-### **6. License (`LICENSE`):**
-
-```text
-MIT License
-
-Copyright (c)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy...
-
-[Continue with the full MIT License text.]
-```
-
-**Note:** Replace `(c)` with the current year and your name.
-
----
-
-### **Guidance on Setting Up the Repository:**
-
-#### **Repository Initialization:**
-
-1. **Initialize the Repository:**
-
-   ```bash
-   git init
-   ```
-
-2. **Add Remote Origin:**
-
-   Since your GitHub username is `alireza787b`, the remote repository would be:
-
-   ```bash
-   git remote add origin https://github.com/alireza787b/smart-wifi-manager.git
-   ```
-
-3. **Add Files to the Repository:**
-
-   ```bash
-   git add smart-wifi-manager.sh known_networks.conf smart-wifi-manager.service install.sh README.md LICENSE
-   ```
-
-4. **Commit the Changes:**
-
-   ```bash
-   git commit -m "Initial commit of Smart Wi-Fi Manager project"
-   ```
-
-5. **Push to GitHub:**
-
-   ```bash
-   git push -u origin master
-   ```
-
----
 
 ### **Technical and Non-Technical Explanation:**
 
@@ -248,5 +178,17 @@ Smart Wi-Fi Manager is a tool that helps your Raspberry Pi always connect to the
 - **Background Operation:** Once installed, it runs in the background, so you don't have to manually manage your Wi-Fi connections.
 - **Real-time Updates:** If you add or remove networks from your list, the tool will automatically recognize the changes.
 - **Reliability:** Ensures your device stays connected to the best possible network, improving internet connectivity and performance.
+
+## Contributing
+
+Contributions are welcome! Please fork the repository and submit a pull request for any improvements or bug fixes.
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE).
+
+## Support
+
+If you encounter any issues or have questions, feel free to open an issue in the repository.
 
 
