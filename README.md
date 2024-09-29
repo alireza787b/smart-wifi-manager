@@ -1,35 +1,43 @@
-# Smart Wi-Fi Manager
+## Smart Wi-Fi Manager
 
 Smart Wi-Fi Manager is a Bash script and systemd service for Raspberry Pi devices that ensures they are always connected to the strongest known Wi-Fi network. It scans for Wi-Fi networks periodically, compares signal strengths, and switches to a stronger network if available.
 
 ## Features
 
-- **Automatic Connection:** Automatically connects to the strongest available known Wi-Fi network.
+- **Automatic Connection:** Connects to the strongest available known Wi-Fi network.
 - **Periodic Scanning:** Scans for Wi-Fi networks every 10 seconds (configurable).
-- **Easy Configuration:** Simply edit a configuration file to add your known networks.
+- **Easy Configuration:** Edit a configuration file to add your known networks.
 - **Service Integration:** Runs as a background service using `systemd`.
-- **Real-time Updates:** Reads the configuration file on each scan, so changes take effect immediately.
-- **Logging:** Keeps logs for monitoring and debugging purposes.
+- **Real-time Updates:** Reads the configuration file on each scan for immediate effect.
+- **Logging:** Keeps logs for monitoring and debugging.
 
 ## Prerequisites
+- Root privileges to install and run the script as a service.
 
-- Raspberry Pi running a Linux distribution with `nmcli` (NetworkManager) installed. Before installing Smart Wi-Fi Manager, ensure that `NetworkManager` and `nmcli` are installed on your system.
-  
+- Raspberry Pi running a Linux distribution with `nmcli` (NetworkManager) installed. Before installing Smart Wi-Fi Manager, make sure `NetworkManager` and `nmcli` are available.
+
 ```bash
 sudo apt update
 sudo apt install network-manager
 ```
 
-Note: Some Raspberry Pi distributions may use dhcpcd by default. You may need to disable dhcpcd and enable NetworkManager.
-```bash
-sudo systemctl stop dhcpcd
-sudo systemctl disable dhcpcd
+**Note:** If you're using an older Raspberry Pi OS version or `dhcpcd`, you may need to switch to NetworkManager. If you're on a recent version (Bullseye or newer), you're all set!
 
-sudo systemctl enable NetworkManager
-sudo systemctl start NetworkManager
-```
+### Switching to NetworkManager if using older version
 
-- Root privileges to install and run the script as a service.
+1. **Stop and Disable DHCPCD:**
+   ```bash
+   sudo systemctl stop dhcpcd
+   sudo systemctl disable dhcpcd
+   ```
+
+2. **Enable and Start NetworkManager:**
+   ```bash
+   sudo systemctl enable NetworkManager
+   sudo systemctl start NetworkManager
+   ```
+
+**Caution:** When disabling dhcpcd, ensure that you have a backup connection method (like an Ethernet cable or serial or mouse and keyboard) ready, as this may temporarily disconnect your device from the network. After switching, reconnect to your Wi-Fi networks through NetworkManager settings.
 
 
 
