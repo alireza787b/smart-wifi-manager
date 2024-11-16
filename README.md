@@ -73,7 +73,15 @@ ssid=OfficeNetwork
 password=AnotherSecretPassword
 ```
 
-### 4. Install the Script and Service
+### 4. Modify the Service Parameters
+Open the `smart-wifi-manager.service` and edit the following lines depending on your user and path settings. (eg. pi, /home/pi/) 
+```bash
+User=root
+ExecStart=/bin/bash /path/to/smart-wifi-manager/smart-wifi-manager.sh
+WorkingDirectory=/path/to/smart-wifi-manager
+```
+
+### 5. Install the Script and Service
 
 Run the installation script:
 
@@ -81,7 +89,7 @@ Run the installation script:
 sudo bash install.sh
 ```
 
-### 5. Verify the Service Status
+### 6. Verify the Service Status
 
 Check if the service is running:
 
