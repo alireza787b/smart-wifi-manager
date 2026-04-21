@@ -13,8 +13,15 @@ Options:
 - `--state-dir PATH`
 - `--log-file PATH`
 - `--dashboard-listen ADDR`
+- `--dashboard-version VERSION`
 - `--skip-dashboard`
 - `--install-dashboard-only`
+
+Dashboard install behavior:
+
+- tries the matching GitHub release asset first
+- falls back to local source build if the asset is unavailable
+- skips dashboard setup entirely when `--skip-dashboard` is used
 
 ## `configure_smart_wifi_manager.sh`
 

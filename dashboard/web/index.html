@@ -131,6 +131,11 @@
         <div class="stack" id="statusFields"></div>
       </article>
       <article class="panel">
+        <h2>System & Paths</h2>
+        <div id="metaBadges"></div>
+        <div class="stack" id="metaFields"></div>
+      </article>
+      <article class="panel">
         <h2>Service Actions</h2>
         <div class="actions">
           <button id="scanNowBtn">Trigger Scan</button>
@@ -212,7 +217,7 @@
   </main>
 
   <script>
-    const state = { config: null, status: null };
+    const state = { config: null, status: null, meta: null };
 
     async function fetchJSON(path, options = {}) {
       const response = await fetch(path, options);
@@ -231,10 +236,15 @@
       const status = state.status || {};
       const badges = [];
       const warnings = status.warnings || [];
-      badges.push(badge(`mode:${status.service?.mode || "unknown"}`, status.service?.mode === "manage" ? "good" : "warn"));
-      badges.push(badge(status.current_connection?.connected ? "connected" : "not-connected", status.current_connection?.connected ? "good" : "warn"));
-      if (status.system?.nmcli_present === false) badges.push(badge("nmcli missing", "bad"));
-      if (status.system?.network_manager_active === false) badges.push(badge("NetworkManager inactive", "bad"));
+      const mode = status.service?.mode || "unknown";
+      const connected = Boolean(status.current_connection?.connected);
+      const nmcliPresent = status.system?.nmcli_present;
+      const networkManagerActive = status.system?.network_manager_active;
+
+      badges.push(badge(`mode:${mode}`, mode === "manage" ? "good" : "warn"));
+      badges.push(badge(connected ? "connected" : "not-connected", connected ? "good" : "warn"));
+      if (nmcliPresent === false) badges.push(badge("nmcli missing", "bad"));
+      if (networkManagerActive === false) badges.push(badge("NetworkManager inactive", "bad"));
       if (warnings.length) badges.push(badge(`${warnings.length} warning(s)`, "warn"));
       document.getElementById("statusBadges").innerHTML = badges.join("");
 
@@ -244,11 +254,34 @@
         ["Interface", status.interface?.active || status.interface?.requested || "n/a"],
         ["Current SSID", status.current_connection?.ssid || "n/a"],
         ["Signal", (status.current_connection?.signal ?? 0) + "%"],
+        ["Visible Networks", String(status.scan?.available_count ?? 0)],
         ["Selection", status.selection?.reason || "n/a"],
+        ["Switch Result", status.selection?.switch_result || "n/a"],
         ["Last Switch", status.selection?.last_switch_at || "n/a"],
       ];
       if (warnings.length) rows.push(["Warnings", warnings.join(" | ")]);
       document.getElementById("statusFields").innerHTML = rows.map(([k, v]) => `<div class="row"><strong>${k}</strong><span>${v}</span></div>`).join("");
+    }
+
+    function renderMeta() {
+      const meta = state.meta || {};
+      const status = state.status || {};
+      const badges = [];
+      if (meta.version) badges.push(badge(`version:${meta.version}`, "good"));
+      if (status.system?.nmcli_present === true) badges.push(badge("nmcli present", "good"));
+      if (status.system?.network_manager_active === true) badges.push(badge("NetworkManager active", "good"));
+      if (status.service?.config_path) badges.push(badge("config loaded", "good"));
+      document.getElementById("metaBadges").innerHTML = badges.join("");
+
+      const rows = [
+        ["Platform", status.system?.platform || "n/a"],
+        ["Python", status.system?.python || "n/a"],
+        ["Config Path", meta.config_path || "n/a"],
+        ["Status Path", meta.status_path || "n/a"],
+        ["Control Dir", meta.control_dir || "n/a"],
+        ["Log Path", meta.log_path || "n/a"],
+      ];
+      document.getElementById("metaFields").innerHTML = rows.map(([k, v]) => `<div class="row"><strong>${k}</strong><span>${v}</span></div>`).join("");
     }
 
     function profileTemplate(profile, index) {
@@ -310,9 +343,11 @@
     }
 
     async function refreshAll() {
+      state.meta = await fetchJSON("/api/meta");
       state.status = await fetchJSON("/api/status");
       state.config = await fetchJSON("/api/config");
       renderStatus();
+      renderMeta();
       renderConfig();
       renderNetworks();
       await loadLogs();

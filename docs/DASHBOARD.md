@@ -18,6 +18,8 @@ sudo ./install.sh --dashboard-listen 0.0.0.0:9080
 
 - current service mode
 - current Wi-Fi connection
+- service/system health summary
+- host/runtime metadata and active file paths
 - available networks from the latest scan
 - known profiles and effective priority
 - warnings such as:

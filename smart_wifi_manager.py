@@ -29,7 +29,7 @@ def load_version() -> str:
     version_file = Path(__file__).with_name("VERSION")
     if version_file.exists():
         return version_file.read_text(encoding="utf-8").strip()
-    return "2.0.0"
+    return "2.1.0"
 
 
 VERSION = load_version()

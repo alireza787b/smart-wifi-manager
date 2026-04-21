@@ -10,6 +10,7 @@ It is built as a standalone product:
 - optional lightweight web dashboard on port `9080`
 - install/configure scripts for operators
 - file-based status and control surfaces for AI agents and automation
+- release-built dashboard binaries with local source-build fallback
 
 This repo is intentionally **not MDS-specific**. MDS can integrate it later as
 an optional connectivity backend, but the tool stands on its own.
@@ -62,6 +63,12 @@ This installs:
 - `smart-wifi-manager.service`
 - default config at `/etc/smart-wifi-manager/config.json`
 - optional dashboard service on `127.0.0.1:9080`
+
+Dashboard install behavior:
+
+- first tries the published dashboard release asset for the current CPU arch
+- falls back to local Go source build if a release asset is unavailable
+- can skip the dashboard entirely for minimal installs
 
 Skip the dashboard if you only want the core service:
 
@@ -196,6 +203,13 @@ python3 -m pytest tests -q
 ```bash
 cd dashboard
 go build ./cmd
+```
+
+### Installer Validation
+
+```bash
+bash -n install.sh configure_smart_wifi_manager.sh smart-wifi-manager.sh
+go test ./dashboard/...
 ```
 
 ## License
