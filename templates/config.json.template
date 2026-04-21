@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "mode": "manage",
+  "interface": "",
+  "scan_interval_sec": 10,
+  "signal_switch_threshold": 20,
+  "connect_timeout_sec": 10,
+  "cooldown_sec": 60,
+  "allow_open_networks": false,
+  "profiles": [
+    {
+      "id": "home",
+      "ssid": "MyHomeNetwork",
+      "priority": 100,
+      "connection_name": "",
+      "password": "",
+      "password_file": "",
+      "autoconnect": true,
+      "disabled": false,
+      "notes": "Replace this with your real SSID or import a profile bundle."
+    }
+  ]
+}

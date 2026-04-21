@@ -1,210 +1,203 @@
-## Smart Wi-Fi Manager
+# Smart Wi-Fi Manager
 
-Smart Wi-Fi Manager is a Bash script and systemd service for Raspberry Pi devices that ensures they are always connected to the strongest known Wi-Fi network. It scans for Wi-Fi networks periodically, compares signal strengths, and switches to a stronger network if available.
+Smart Wi-Fi Manager keeps a Linux companion computer connected to the best
+available known Wi-Fi profile using NetworkManager (`nmcli`).
 
-## Features
+It is built as a standalone product:
 
-- **Automatic Connection:** Connects to the strongest available known Wi-Fi network.
-- **Periodic Scanning:** Scans for Wi-Fi networks every 10 seconds (configurable).
-- **Easy Configuration:** Edit a configuration file to add your known networks.
-- **Service Integration:** Runs as a background service using `systemd`.
-- **Real-time Updates:** Reads the configuration file on each scan for immediate effect.
-- **Logging:** Keeps logs for monitoring and debugging.
+- generic Linux companion-computer utility
+- structured JSON config
+- optional lightweight web dashboard on port `9080`
+- install/configure scripts for operators
+- file-based status and control surfaces for AI agents and automation
 
-## Prerequisites
-- Root privileges to install and run the script as a service.
+This repo is intentionally **not MDS-specific**. MDS can integrate it later as
+an optional connectivity backend, but the tool stands on its own.
 
-- Raspberry Pi running a Linux distribution with `nmcli` (NetworkManager) installed. Before installing Smart Wi-Fi Manager, make sure `NetworkManager` and `nmcli` are available.
+## Dashboard Preview
 
-```bash
-sudo apt update
-sudo apt install network-manager
-```
+![Smart Wi-Fi Manager dashboard](docs/images/dashboard-overview.png)
 
-**Note:** If you're using an older Raspberry Pi OS version or `dhcpcd`, you may need to switch to NetworkManager. If you're on a recent version (Bullseye or newer), you're all set!
+## What It Does
 
-### Switching to NetworkManager if using older version
+- watches Wi-Fi availability through NetworkManager
+- tracks the current connection and visible candidate networks
+- chooses the best known profile using priority + signal policy
+- switches only when policy says it should
+- writes live status to a predictable JSON file
+- exposes config/status/logs through a local dashboard/API
 
-1. **Stop and Disable DHCPCD:**
-   ```bash
-   sudo systemctl stop dhcpcd
-   sudo systemctl disable dhcpcd
-   ```
+## Runtime Model
 
-2. **Enable and Start NetworkManager:**
-   ```bash
-   sudo systemctl enable NetworkManager
-   sudo systemctl start NetworkManager
-   ```
+Canonical files:
 
-**Caution:** When disabling dhcpcd, ensure that you have a backup connection method (like an Ethernet cable or serial or mouse and keyboard) ready, as this may temporarily disconnect your device from the network. After switching, reconnect to your Wi-Fi networks through NetworkManager settings.
+- config: `/etc/smart-wifi-manager/config.json`
+- status: `/run/smart-wifi-manager/status.json`
+- state/control: `/var/lib/smart-wifi-manager`
+- logs: `/var/log/smart-wifi-manager/smart-wifi-manager.log`
 
+Modes:
 
+- `manage`: scan and switch
+- `observe`: scan/report only, no switching
+- `disabled`: stay installed but inactive
 
-## Installation
+## Quick Start
 
-### 1. Clone the Repository
+### 1. Clone
 
 ```bash
 git clone https://github.com/alireza787b/smart-wifi-manager.git
-```
-
-### 2. Navigate to the Directory
-
-```bash
 cd smart-wifi-manager
 ```
 
-### 3. Edit Known Networks Configuration
-
-Edit the `known_networks.conf` file to include your known Wi-Fi networks:
-
-```conf
-# known_networks.conf
-# Format:
-# ssid=<Your_SSID>
-# password=<Your_Password>
-
-# Example:
-ssid=MyHomeNetwork
-password=SuperSecretPassword
-
-ssid=OfficeNetwork
-password=AnotherSecretPassword
-```
-
-### 4. Modify the Service Parameters
-Open the `smart-wifi-manager.service` and edit the following lines depending on your user and path settings. (eg. pi, /home/pi/) 
-```bash
-User=root
-ExecStart=/bin/bash /path/to/smart-wifi-manager/smart-wifi-manager.sh
-WorkingDirectory=/path/to/smart-wifi-manager
-```
-
-### 5. Install the Script and Service
-
-Run the installation script:
+### 2. Install
 
 ```bash
-sudo bash install.sh
+sudo ./install.sh
 ```
 
-### 6. Verify the Service Status
+This installs:
 
-Check if the service is running:
+- `smart-wifi-manager.service`
+- default config at `/etc/smart-wifi-manager/config.json`
+- optional dashboard service on `127.0.0.1:9080`
+
+Skip the dashboard if you only want the core service:
 
 ```bash
-sudo systemctl status smart-wifi-manager.service
+sudo ./install.sh --skip-dashboard
 ```
 
-## Usage
-
-- **Running as a Service:** The script runs in the background as a `systemd` service.
-- **Logs:** Logs are stored in the same directory as the script (`smart-wifi-manager.log`).
-- **Configuration Updates:** To update known networks, edit `known_networks.conf` and the changes will be applied automatically on the next scan.
-
-## Security Notice
-
-**Important:** The `known_networks.conf` file stores your Wi-Fi passwords in plain text. To ensure the security of your networks:
-
-- **Secure File Permissions:** Ensure that the configuration file is readable only by authorized users.
-
-  ```bash
-  chmod 600 known_networks.conf
-  ```
-
-- **Network Security Measures:** Consider implementing MAC address filtering or other network security measures on your router.
-
-- **Encryption (Advanced):** If you require encryption of the passwords, you will need to implement encryption and decryption mechanisms within the script.
-
-## Service Management
-
-### Viewing Logs
-
-To view the service logs:
+Expose the dashboard on the LAN or VPN only if you actually want remote access:
 
 ```bash
-sudo journalctl -u smart-wifi-manager.service -f
+sudo ./install.sh --dashboard-listen 0.0.0.0:9080
 ```
 
-### Restarting the Service
-
-To restart the service:
+### 3. Configure
 
 ```bash
-sudo systemctl restart smart-wifi-manager.service
+sudo ./configure_smart_wifi_manager.sh
 ```
 
-### Checking Service Status
+Or headless:
 
-To check the status of the service:
+```bash
+sudo ./configure_smart_wifi_manager.sh --headless \
+  --mode manage \
+  --scan-interval 10 \
+  --signal-threshold 20 \
+  --cooldown 60
+```
+
+Import a prepared config bundle:
+
+```bash
+sudo ./configure_smart_wifi_manager.sh --headless \
+  --import ./my-wifi-config.json \
+  --import-mode replace
+```
+
+### 4. Verify
 
 ```bash
 sudo systemctl status smart-wifi-manager.service
+cat /run/smart-wifi-manager/status.json
 ```
 
-### Stopping the Service
+If dashboard is installed:
 
-To stop the service:
+```text
+http://127.0.0.1:9080
+```
+
+## Config Model
+
+The canonical config is structured JSON. Example:
+
+```json
+{
+  "version": 1,
+  "mode": "manage",
+  "interface": "",
+  "scan_interval_sec": 10,
+  "signal_switch_threshold": 20,
+  "connect_timeout_sec": 10,
+  "cooldown_sec": 60,
+  "allow_open_networks": false,
+  "profiles": [
+    {
+      "id": "home",
+      "ssid": "MyHomeNetwork",
+      "priority": 100,
+      "connection_name": "",
+      "password": "",
+      "password_file": "/root/.wifi/home.pass",
+      "autoconnect": true,
+      "disabled": false,
+      "notes": "Primary network"
+    }
+  ]
+}
+```
+
+### Profile Guidance
+
+Preferred order:
+
+1. use an existing NetworkManager connection name
+2. use `password_file`
+3. use inline `password` only if you accept that tradeoff
+
+For larger fleets, keep policy in version control and keep secrets out of git by
+default.
+
+## Dashboard and API
+
+The dashboard is a thin local UI over the same config/status files.
+
+Main actions:
+
+- inspect service state
+- inspect visible networks
+- add/edit/remove profiles
+- change priorities and runtime policy
+- import/merge/replace config bundles
+- export full config
+- trigger an immediate scan
+- read recent logs
+
+Documentation:
+
+- [Dashboard Guide](docs/DASHBOARD.md)
+- [CLI Reference](docs/CLI-REFERENCE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+
+## Operator Notes
+
+- This tool assumes `NetworkManager`/`nmcli`.
+- It is valid to run it in `observe` mode for diagnostics only.
+- If your deployment does not use Wi-Fi, do not install it.
+- Do not assume that changing the Wi-Fi that carries your management channel can
+  be rolled out safely in one blind step across a fleet. Stage it.
+
+## Development
+
+### Core Validation
 
 ```bash
-sudo systemctl stop smart-wifi-manager.service
+python3 smart_wifi_manager.py validate-config --config templates/config.json.template
+python3 -m pytest tests -q
 ```
 
-## Updating Known Networks
-
-To add or remove known networks, edit the `known_networks.conf` file in your cloned repository. No need to restart the service; it reads the configuration file each time it scans.
-
-## Uninstallation
-
-To stop and disable the service:
+### Dashboard Build
 
 ```bash
-sudo systemctl stop smart-wifi-manager.service
-sudo systemctl disable smart-wifi-manager.service
+cd dashboard
+go build ./cmd
 ```
-
-To remove the service file:
-
-```bash
-sudo rm /etc/systemd/system/smart-wifi-manager.service
-sudo systemctl daemon-reload
-```
-
-
-### **Technical and Non-Technical Explanation:**
-
-**Technical Explanation:**
-
-The Smart Wi-Fi Manager is a Bash script designed to enhance the Wi-Fi connectivity of Raspberry Pi devices. It operates by:
-
-- **Scanning Wi-Fi Networks:** Uses `nmcli` to scan for available Wi-Fi networks.
-- **Loading Known Networks:** Reads from `known_networks.conf` to get a list of SSIDs and passwords.
-- **Evaluating Signal Strengths:** Compares the signal strengths of available networks against the current connection.
-- **Switching Networks:** If a stronger known network is found and the signal improvement exceeds a predefined threshold, the script switches to that network.
-- **Running as a Service:** The script is set up as a `systemd` service for continuous background operation.
-- **Logging:** All activities are logged for monitoring and troubleshooting.
-
-**Non-Technical Explanation:**
-
-Smart Wi-Fi Manager is a tool that helps your Raspberry Pi always connect to the best Wi-Fi network you've set up. Here's what it does:
-
-- **Automatic Connection:** It automatically finds and connects to the Wi-Fi network with the strongest signal among those you trust.
-- **Easy Setup:** You list your Wi-Fi networks and their passwords in a simple file, and the tool takes care of the rest.
-- **Background Operation:** Once installed, it runs in the background, so you don't have to manually manage your Wi-Fi connections.
-- **Real-time Updates:** If you add or remove networks from your list, the tool will automatically recognize the changes.
-- **Reliability:** Ensures your device stays connected to the best possible network, improving internet connectivity and performance.
-
-## Contributing
-
-Contributions are welcome! Please fork the repository and submit a pull request for any improvements or bug fixes.
 
 ## License
 
-This project is licensed under the [Apache License 2.0](LICENSE).
-
-## Support
-
-If you encounter any issues or have questions, feel free to open an issue in the repository.
-
-
+Apache License 2.0

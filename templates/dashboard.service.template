@@ -1,0 +1,18 @@
+[Unit]
+Description=Smart Wi-Fi Manager Dashboard
+Documentation=https://github.com/alireza787b/smart-wifi-manager
+After=network-online.target smart-wifi-manager.service
+Wants=smart-wifi-manager.service
+
+[Service]
+Type=simple
+ExecStart=__SWM_DASHBOARD_BINARY__ --listen __SWM_DASHBOARD_LISTEN__ --config __SWM_CONFIG_PATH__ --status __SWM_STATUS_PATH__ --control-dir __SWM_CONTROL_DIR__ --log-file __SWM_LOG_PATH__
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=__SWM_CONFIG_DIR__ __SWM_RUN_DIR__ __SWM_LOG_DIR__
+
+[Install]
+WantedBy=multi-user.target

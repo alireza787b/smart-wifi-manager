@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Wi-Fi Manager</title>
+  <style>
+    :root {
+      --bg: #0f1720;
+      --panel: #16212d;
+      --panel-2: #1c2a39;
+      --text: #e6edf5;
+      --muted: #97a6b5;
+      --accent: #4cc38a;
+      --warn: #f0b429;
+      --danger: #e3645b;
+      --line: #2a3b4d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: linear-gradient(180deg, #0f1720 0%, #131d28 100%);
+      color: var(--text);
+    }
+    header, main { max-width: 1180px; margin: 0 auto; padding: 20px; }
+    header h1 { margin: 0 0 8px; font-size: 28px; }
+    header p { margin: 0; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .panel {
+      background: rgba(22, 33, 45, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.18);
+    }
+    .panel h2 { margin: 0 0 12px; font-size: 16px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: var(--panel-2);
+      color: var(--text);
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    .badge.good { background: rgba(76,195,138,0.16); color: #8df0bd; }
+    .badge.warn { background: rgba(240,180,41,0.16); color: #ffd877; }
+    .badge.bad { background: rgba(227,100,91,0.16); color: #ffb4ae; }
+    .stack { display: flex; flex-direction: column; gap: 10px; }
+    .row { display: flex; justify-content: space-between; gap: 12px; }
+    .row strong { color: var(--muted); font-weight: 600; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    input, select, textarea, button {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #0e161f;
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+      background: #1c7c54;
+      border-color: #1c7c54;
+      font-weight: 700;
+    }
+    button.secondary {
+      background: #223040;
+      border-color: #2e4356;
+    }
+    button.warn {
+      background: #946d17;
+      border-color: #946d17;
+    }
+    pre {
+      margin: 0;
+      padding: 12px;
+      background: #0b1219;
+      border-radius: 10px;
+      overflow: auto;
+      font-size: 12px;
+      max-height: 260px;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .actions > * { flex: 1 1 180px; }
+    .profile-editor {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: rgba(14, 22, 31, 0.7);
+    }
+    .profile-editor h3 { margin: 0 0 10px; font-size: 14px; }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Smart Wi-Fi Manager</h1>
+    <p>Local status, profile control, and configuration for NetworkManager-based Wi-Fi failover.</p>
+  </header>
+  <main>
+    <section class="grid">
+      <article class="panel">
+        <h2>Live Status</h2>
+        <div id="statusBadges"></div>
+        <div class="stack" id="statusFields"></div>
+      </article>
+      <article class="panel">
+        <h2>Service Actions</h2>
+        <div class="actions">
+          <button id="scanNowBtn">Trigger Scan</button>
+          <button class="secondary" id="refreshBtn">Refresh</button>
+          <button class="secondary" id="exportBtn">Export Config</button>
+        </div>
+        <div style="margin-top: 12px;">
+          <label class="muted" for="importMode">Import mode</label>
+          <select id="importMode">
+            <option value="merge">Merge</option>
+            <option value="replace">Replace</option>
+          </select>
+        </div>
+        <div style="margin-top: 12px;">
+          <input type="file" id="importFile" accept=".json,application/json">
+        </div>
+        <div style="margin-top: 12px;">
+          <button class="warn" id="importBtn">Import Config</button>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Runtime Config</h2>
+        <div class="stack">
+          <label>Mode
+            <select id="cfgMode">
+              <option value="manage">manage</option>
+              <option value="observe">observe</option>
+              <option value="disabled">disabled</option>
+            </select>
+          </label>
+          <label>Interface
+            <input id="cfgInterface" placeholder="blank = auto">
+          </label>
+          <label>Scan Interval (sec)
+            <input id="cfgScanInterval" type="number" min="2">
+          </label>
+          <label>Signal Threshold
+            <input id="cfgThreshold" type="number" min="0">
+          </label>
+          <label>Connect Timeout (sec)
+            <input id="cfgConnectTimeout" type="number" min="3">
+          </label>
+          <label>Cooldown (sec)
+            <input id="cfgCooldown" type="number" min="0">
+          </label>
+          <label>Allow Open Networks
+            <select id="cfgAllowOpen">
+              <option value="false">false</option>
+              <option value="true">true</option>
+            </select>
+          </label>
+          <button id="saveConfigBtn">Save Config</button>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Known Profiles</h2>
+        <div id="profiles"></div>
+        <button class="secondary" id="addProfileBtn">Add Profile</button>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Available Networks</h2>
+        <table>
+          <thead><tr><th>SSID</th><th>Signal</th><th>Security</th><th>Current</th></tr></thead>
+          <tbody id="networksTable"></tbody>
+        </table>
+      </article>
+      <article class="panel">
+        <h2>Recent Logs</h2>
+        <pre id="logsBox">Loading logs...</pre>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const state = { config: null, status: null };
+
+    async function fetchJSON(path, options = {}) {
+      const response = await fetch(path, options);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || response.statusText);
+      }
+      return response.json();
+    }
+
+    function badge(label, cls = "") {
+      return `<span class="badge ${cls}">${label}</span>`;
+    }
+
+    function renderStatus() {
+      const status = state.status || {};
+      const badges = [];
+      const warnings = status.warnings || [];
+      badges.push(badge(`mode:${status.service?.mode || "unknown"}`, status.service?.mode === "manage" ? "good" : "warn"));
+      badges.push(badge(status.current_connection?.connected ? "connected" : "not-connected", status.current_connection?.connected ? "good" : "warn"));
+      if (status.system?.nmcli_present === false) badges.push(badge("nmcli missing", "bad"));
+      if (status.system?.network_manager_active === false) badges.push(badge("NetworkManager inactive", "bad"));
+      if (warnings.length) badges.push(badge(`${warnings.length} warning(s)`, "warn"));
+      document.getElementById("statusBadges").innerHTML = badges.join("");
+
+      const rows = [
+        ["Timestamp", status.timestamp || "n/a"],
+        ["Hostname", status.hostname || "n/a"],
+        ["Interface", status.interface?.active || status.interface?.requested || "n/a"],
+        ["Current SSID", status.current_connection?.ssid || "n/a"],
+        ["Signal", (status.current_connection?.signal ?? 0) + "%"],
+        ["Selection", status.selection?.reason || "n/a"],
+        ["Last Switch", status.selection?.last_switch_at || "n/a"],
+      ];
+      if (warnings.length) rows.push(["Warnings", warnings.join(" | ")]);
+      document.getElementById("statusFields").innerHTML = rows.map(([k, v]) => `<div class="row"><strong>${k}</strong><span>${v}</span></div>`).join("");
+    }
+
+    function profileTemplate(profile, index) {
+      return `
+        <div class="profile-editor" data-index="${index}">
+          <h3>${profile.id || profile.ssid || "New Profile"}</h3>
+          <div class="stack">
+            <label>ID<input data-field="id" value="${profile.id || ""}"></label>
+            <label>SSID<input data-field="ssid" value="${profile.ssid || ""}"></label>
+            <label>Priority<input data-field="priority" type="number" min="0" value="${profile.priority ?? 100}"></label>
+            <label>Connection Name<input data-field="connection_name" value="${profile.connection_name || ""}"></label>
+            <label>Password<input data-field="password" value="" placeholder="${profile.has_inline_password ? "stored (leave blank to keep)" : "optional inline password"}"></label>
+            <label>Password File<input data-field="password_file" value="${profile.password_file || ""}" placeholder="/root/.wifi/home.pass"></label>
+            <label>Notes<textarea data-field="notes">${profile.notes || ""}</textarea></label>
+            <label>Disabled
+              <select data-field="disabled">
+                <option value="false" ${profile.disabled ? "" : "selected"}>false</option>
+                <option value="true" ${profile.disabled ? "selected" : ""}>true</option>
+              </select>
+            </label>
+            <button class="secondary" data-remove="${index}">Remove Profile</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderConfig() {
+      const config = state.config || { profiles: [] };
+      document.getElementById("cfgMode").value = config.mode || "manage";
+      document.getElementById("cfgInterface").value = config.interface || "";
+      document.getElementById("cfgScanInterval").value = config.scan_interval_sec ?? 10;
+      document.getElementById("cfgThreshold").value = config.signal_switch_threshold ?? 20;
+      document.getElementById("cfgConnectTimeout").value = config.connect_timeout_sec ?? 10;
+      document.getElementById("cfgCooldown").value = config.cooldown_sec ?? 60;
+      document.getElementById("cfgAllowOpen").value = String(Boolean(config.allow_open_networks));
+      document.getElementById("profiles").innerHTML = (config.profiles || []).map(profileTemplate).join("");
+      document.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", () => {
+        const idx = Number(btn.getAttribute("data-remove"));
+        state.config.profiles.splice(idx, 1);
+        renderConfig();
+      }));
+    }
+
+    function renderNetworks() {
+      const rows = (state.status?.scan?.available_networks || []).map(net => `
+        <tr>
+          <td>${net.ssid}</td>
+          <td>${net.signal}%</td>
+          <td>${net.security || "open"}</td>
+          <td>${net.in_use ? "yes" : ""}</td>
+        </tr>
+      `).join("");
+      document.getElementById("networksTable").innerHTML = rows || `<tr><td colspan="4" class="muted">No scan data yet</td></tr>`;
+    }
+
+    async function loadLogs() {
+      const payload = await fetchJSON("/api/logs");
+      document.getElementById("logsBox").textContent = (payload.lines || []).join("\n") || "No logs available";
+    }
+
+    async function refreshAll() {
+      state.status = await fetchJSON("/api/status");
+      state.config = await fetchJSON("/api/config");
+      renderStatus();
+      renderConfig();
+      renderNetworks();
+      await loadLogs();
+    }
+
+    function readConfigFromForm() {
+      const profiles = [...document.querySelectorAll(".profile-editor")].map(editor => {
+        const profile = {
+          id: editor.querySelector('[data-field="id"]').value.trim(),
+          ssid: editor.querySelector('[data-field="ssid"]').value.trim(),
+          priority: Number(editor.querySelector('[data-field="priority"]').value || 100),
+          connection_name: editor.querySelector('[data-field="connection_name"]').value.trim(),
+          password: editor.querySelector('[data-field="password"]').value,
+          password_file: editor.querySelector('[data-field="password_file"]').value.trim(),
+          notes: editor.querySelector('[data-field="notes"]').value.trim(),
+          disabled: editor.querySelector('[data-field="disabled"]').value === "true"
+        };
+        return profile;
+      });
+      return {
+        ...state.config,
+        mode: document.getElementById("cfgMode").value,
+        interface: document.getElementById("cfgInterface").value.trim(),
+        scan_interval_sec: Number(document.getElementById("cfgScanInterval").value || 10),
+        signal_switch_threshold: Number(document.getElementById("cfgThreshold").value || 20),
+        connect_timeout_sec: Number(document.getElementById("cfgConnectTimeout").value || 10),
+        cooldown_sec: Number(document.getElementById("cfgCooldown").value || 60),
+        allow_open_networks: document.getElementById("cfgAllowOpen").value === "true",
+        profiles
+      };
+    }
+
+    async function saveConfig() {
+      state.config = readConfigFromForm();
+      await fetchJSON("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(state.config)
+      });
+      await refreshAll();
+    }
+
+    async function triggerScan() {
+      await fetchJSON("/api/actions/scan", { method: "POST" });
+      await refreshAll();
+    }
+
+    async function exportConfig() {
+      const payload = await fetchJSON("/api/config/export");
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "smart-wifi-manager-config.json";
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importConfig() {
+      const file = document.getElementById("importFile").files[0];
+      if (!file) return;
+      const payload = JSON.parse(await file.text());
+      await fetchJSON(`/api/config/import?mode=${document.getElementById("importMode").value}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      await refreshAll();
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", refreshAll);
+    document.getElementById("scanNowBtn").addEventListener("click", triggerScan);
+    document.getElementById("saveConfigBtn").addEventListener("click", saveConfig);
+    document.getElementById("exportBtn").addEventListener("click", exportConfig);
+    document.getElementById("importBtn").addEventListener("click", importConfig);
+    document.getElementById("addProfileBtn").addEventListener("click", () => {
+      state.config.profiles.push({ id: "", ssid: "", priority: 100, connection_name: "", password: "", password_file: "", notes: "", disabled: false });
+      renderConfig();
+    });
+
+    refreshAll().catch(err => {
+      document.getElementById("logsBox").textContent = String(err);
+    });
+  </script>
+</body>
+</html>
