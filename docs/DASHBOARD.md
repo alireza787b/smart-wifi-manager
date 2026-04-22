@@ -39,6 +39,20 @@ sudo ./install.sh --dashboard-listen 0.0.0.0:9080
 The service itself reloads config every cycle, so a manual “reload config”
 button is not required.
 
+## Import Modes
+
+The import API and dashboard support two modes:
+
+- `merge`
+  - updates the current config with the imported bundle
+  - best for additive fleet rollouts and staged profile updates
+- `replace`
+  - replaces the current config with the imported bundle
+  - best for authoritative reset or known-clean reprovisioning
+
+Use `replace` carefully on remote systems. If the imported bundle removes the
+currently working management network, the host may become harder to reach.
+
 ## API Endpoints
 
 | Endpoint | Method | Purpose |
@@ -58,3 +72,15 @@ button is not required.
 - inline passwords are redacted from `GET /api/config`
 - if the UI saves a profile with blank password, the existing inline password is preserved
 - explicit secret deletion should be handled by editing the config bundle or adding UI support later
+
+## Fleet Use
+
+The dashboard is a local per-host UI. It does not push a bundle to other
+machines by itself.
+
+For fleet use:
+
+1. export or maintain a default profile bundle
+2. distribute it with your fleet orchestrator
+3. apply it with `merge` or `replace` depending on the rollout goal
+4. keep secrets local where possible through `password_file`

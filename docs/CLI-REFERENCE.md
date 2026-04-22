@@ -43,6 +43,14 @@ Options:
 - `--connect-timeout SEC`
 - `--allow-open-networks true|false`
 
+Fleet/operator guidance:
+
+- use `--import PATH --import-mode merge` for additive updates
+- use `--import PATH --import-mode replace` only for authoritative reset
+- prefer `password_file` in imported bundles when the same policy must be
+  distributed to many hosts
+- keep the secret file path stable when rotating credentials
+
 ## `smart_wifi_manager.py`
 
 ### Run
@@ -71,3 +79,15 @@ python3 smart_wifi_manager.py validate-config --config ./templates/config.json.t
 ```bash
 python3 smart_wifi_manager.py print-config --config /etc/smart-wifi-manager/config.json --redacted
 ```
+
+## Automation Pattern
+
+For orchestrated fleet use, treat Smart Wi-Fi Manager as a single-host runtime:
+
+1. prepare a non-secret policy bundle
+2. distribute it with your orchestration layer
+3. apply it locally with `configure_smart_wifi_manager.sh`
+4. inspect `/run/smart-wifi-manager/status.json` for the live result
+
+The tool is designed to be automation-friendly, but multi-node rollout and
+approval logic belong in the external fleet system.

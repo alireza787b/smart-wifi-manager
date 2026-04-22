@@ -160,6 +160,60 @@ Preferred order:
 For larger fleets, keep policy in version control and keep secrets out of git by
 default.
 
+## Fleet And Profile Bundle Workflow
+
+This tool is intentionally local-first:
+
+- it manages one host
+- it reads one canonical config file
+- it can import, merge, replace, and export profile bundles
+
+It does **not** perform multi-node rollout by itself.
+
+For fleet use, the recommended pattern is:
+
+1. keep the non-secret policy bundle in version control
+2. keep secrets in local `password_file` paths where possible
+3. use an external orchestrator to distribute and apply the bundle
+4. use `merge` for additive rollout and `replace` only when you want
+   authoritative replacement
+
+### Fleet Default Versus Node Override
+
+For larger fleets, separate the two:
+
+- fleet default bundle:
+  - common SSIDs
+  - priority order
+  - scan policy
+  - observe/manage/disabled mode
+- node override:
+  - one-off local interface differences
+  - site-specific emergency profile
+  - local password file path if a node cannot share the normal path layout
+
+If a node needs a local override, keep that explicit. Do not silently let local
+drift become the new default bundle.
+
+### Import Mode Guidance
+
+- `merge`
+  - add or update profiles/settings without treating the imported file as a
+    complete replacement
+  - preferred for gradual rollout
+- `replace`
+  - overwrite the full config with the imported bundle
+  - use for authoritative resets, image seeding, or known-clean reprovisioning
+
+### Secrets Guidance
+
+For repeatable fleet operations:
+
+- prefer `password_file`
+- keep file paths stable when rotating secrets
+- avoid inline `password` for long-lived fleet policy bundles
+- if you export a config for version control, review it before committing
+
 ## Dashboard and API
 
 The dashboard is a thin local UI over the same config/status files.
@@ -175,6 +229,10 @@ Main actions:
 - trigger an immediate scan
 - read recent logs
 
+If you use this tool as part of a larger fleet system, the dashboard is still a
+single-host control surface. Fleet-wide rollout should come from your external
+orchestrator, not by manually editing every node one by one.
+
 Documentation:
 
 - [Dashboard Guide](docs/DASHBOARD.md)
@@ -188,6 +246,8 @@ Documentation:
 - If your deployment does not use Wi-Fi, do not install it.
 - Do not assume that changing the Wi-Fi that carries your management channel can
   be rolled out safely in one blind step across a fleet. Stage it.
+- Exported bundles are useful as fleet-default policy artifacts, but the
+  runtime secrets should still be handled separately.
 
 ## Development
 
