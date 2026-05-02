@@ -193,9 +193,7 @@ install_core_service() {
 }
 
 install_dashboard_service() {
-    if [[ ! -x "$DASHBOARD_BINARY_PATH" ]]; then
-        ensure_dashboard_binary || return 1
-    fi
+    ensure_dashboard_binary || return 1
 
     render_template "$INSTALL_DIR/templates/dashboard.service.template" "$DASHBOARD_SERVICE_FILE"
     chmod 644 "$DASHBOARD_SERVICE_FILE"
