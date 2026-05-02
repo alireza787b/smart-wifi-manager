@@ -239,6 +239,14 @@ Documentation:
 - [CLI Reference](docs/CLI-REFERENCE.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 
+For field operators, the dashboard guide includes exact steps for adding a new
+SSID, changing priority, updating a password, disabling a profile, and removing
+a profile safely.
+
+The dashboard can also turn a scanned SSID into a known profile. The manager
+will only join known profiles, so this keeps Wi-Fi changes auditable instead of
+creating one-off manual connections.
+
 ## Operator Notes
 
 - This tool assumes `NetworkManager`/`nmcli`.

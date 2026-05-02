@@ -92,6 +92,14 @@
       background: #946d17;
       border-color: #946d17;
     }
+    button.danger {
+      background: #7f2f2b;
+      border-color: #91413c;
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
     pre {
       margin: 0;
       padding: 12px;
@@ -114,8 +122,64 @@
       margin-bottom: 10px;
       background: rgba(14, 22, 31, 0.7);
     }
-    .profile-editor h3 { margin: 0 0 10px; font-size: 14px; }
+    .profile-editor h3 { margin: 0; font-size: 14px; }
+    .profile-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .profile-title {
+      min-width: 0;
+    }
+    .profile-title span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .profile-tools {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(42px, 1fr));
+      gap: 6px;
+      flex: 0 0 150px;
+    }
+    .profile-tools button,
+    .inline-action {
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .profile-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .network-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .network-actions button {
+      width: auto;
+      min-width: 86px;
+    }
     .muted { color: var(--muted); }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 8px 0 0;
+      line-height: 1.45;
+    }
+    @media (max-width: 720px) {
+      header, main { padding: 16px; }
+      .profile-header { flex-direction: column; }
+      .profile-tools { width: 100%; flex-basis: auto; }
+      table { font-size: 12px; }
+      th, td { padding: 7px 4px; }
+      .network-actions button { flex: 1 1 72px; min-width: 0; }
+    }
   </style>
 </head>
 <body>
@@ -198,6 +262,7 @@
         <h2>Known Profiles</h2>
         <div id="profiles"></div>
         <button class="secondary" id="addProfileBtn">Add Profile</button>
+        <p class="hint">Known profiles are the only networks this service will join. Higher priority wins when several known SSIDs are visible.</p>
       </article>
     </section>
 
@@ -205,9 +270,10 @@
       <article class="panel">
         <h2>Available Networks</h2>
         <table>
-          <thead><tr><th>SSID</th><th>Signal</th><th>Security</th><th>Current</th></tr></thead>
+          <thead><tr><th>SSID</th><th>Signal</th><th>Security</th><th>State</th><th>Action</th></tr></thead>
           <tbody id="networksTable"></tbody>
         </table>
+        <p class="hint">Use scanned SSIDs to create or update known profiles, then save and trigger a scan. In observe mode the service reports only; in manage mode it may switch.</p>
       </article>
       <article class="panel">
         <h2>Recent Logs</h2>
@@ -219,6 +285,43 @@
   <script>
     const state = { config: null, status: null, meta: null };
 
+    function escapeHTML(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    function slugSSID(ssid) {
+      return String(ssid || "network")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48) || "network";
+    }
+
+    function knownProfiles() {
+      return state.config?.profiles || [];
+    }
+
+    function nextPriority() {
+      const priorities = knownProfiles().map(profile => Number(profile.priority || 0));
+      const currentMax = priorities.length ? Math.max(...priorities) : 90;
+      return currentMax + 10;
+    }
+
+    function findProfileBySSID(ssid) {
+      return knownProfiles().find(profile => String(profile.ssid || "").toLowerCase() === String(ssid || "").toLowerCase());
+    }
+
+    function statusProfileBySSID(ssid) {
+      return (state.status?.profiles || []).find(profile => String(profile.ssid || "").toLowerCase() === String(ssid || "").toLowerCase());
+    }
+
     async function fetchJSON(path, options = {}) {
       const response = await fetch(path, options);
       if (!response.ok) {
@@ -229,7 +332,7 @@
     }
 
     function badge(label, cls = "") {
-      return `<span class="badge ${cls}">${label}</span>`;
+      return `<span class="badge ${cls}">${escapeHTML(label)}</span>`;
     }
 
     function renderStatus() {
@@ -260,7 +363,7 @@
         ["Last Switch", status.selection?.last_switch_at || "n/a"],
       ];
       if (warnings.length) rows.push(["Warnings", warnings.join(" | ")]);
-      document.getElementById("statusFields").innerHTML = rows.map(([k, v]) => `<div class="row"><strong>${k}</strong><span>${v}</span></div>`).join("");
+      document.getElementById("statusFields").innerHTML = rows.map(([k, v]) => `<div class="row"><strong>${escapeHTML(k)}</strong><span>${escapeHTML(v)}</span></div>`).join("");
     }
 
     function renderMeta() {
@@ -281,28 +384,48 @@
         ["Control Dir", meta.control_dir || "n/a"],
         ["Log Path", meta.log_path || "n/a"],
       ];
-      document.getElementById("metaFields").innerHTML = rows.map(([k, v]) => `<div class="row"><strong>${k}</strong><span>${v}</span></div>`).join("");
+      document.getElementById("metaFields").innerHTML = rows.map(([k, v]) => `<div class="row"><strong>${escapeHTML(k)}</strong><span>${escapeHTML(v)}</span></div>`).join("");
     }
 
     function profileTemplate(profile, index) {
+      const profileID = escapeHTML(profile.id || profile.ssid || "New Profile");
+      const ssid = escapeHTML(profile.ssid || "");
+      const current = Boolean(statusProfileBySSID(profile.ssid)?.current || profile.current);
+      const disabled = Boolean(profile.disabled);
+      const priority = Number(profile.priority ?? 100);
       return `
         <div class="profile-editor" data-index="${index}">
-          <h3>${profile.id || profile.ssid || "New Profile"}</h3>
+          <div class="profile-header">
+            <div class="profile-title">
+              <h3>${profileID}</h3>
+              <span>${ssid || "SSID not set"}</span>
+            </div>
+            <div class="profile-tools">
+              <button class="secondary" data-move="${index}" data-direction="up" title="Raise priority">Up</button>
+              <button class="secondary" data-move="${index}" data-direction="down" title="Lower priority">Down</button>
+              <button class="danger" data-remove="${index}" title="Remove profile">Remove</button>
+            </div>
+          </div>
+          <div class="profile-summary">
+            ${badge(`priority ${priority}`, "good")}
+            ${disabled ? badge("disabled", "warn") : badge("enabled", "good")}
+            ${current ? badge("current", "good") : ""}
+            ${profile.has_inline_password ? badge("password stored", "warn") : ""}
+          </div>
           <div class="stack">
-            <label>ID<input data-field="id" value="${profile.id || ""}"></label>
-            <label>SSID<input data-field="ssid" value="${profile.ssid || ""}"></label>
+            <label>ID<input data-field="id" value="${escapeHTML(profile.id || "")}"></label>
+            <label>SSID<input data-field="ssid" value="${escapeHTML(profile.ssid || "")}"></label>
             <label>Priority<input data-field="priority" type="number" min="0" value="${profile.priority ?? 100}"></label>
-            <label>Connection Name<input data-field="connection_name" value="${profile.connection_name || ""}"></label>
+            <label>Connection Name<input data-field="connection_name" value="${escapeHTML(profile.connection_name || "")}"></label>
             <label>Password<input data-field="password" value="" placeholder="${profile.has_inline_password ? "stored (leave blank to keep)" : "optional inline password"}"></label>
-            <label>Password File<input data-field="password_file" value="${profile.password_file || ""}" placeholder="/root/.wifi/home.pass"></label>
-            <label>Notes<textarea data-field="notes">${profile.notes || ""}</textarea></label>
+            <label>Password File<input data-field="password_file" value="${escapeHTML(profile.password_file || "")}" placeholder="/root/.wifi/home.pass"></label>
+            <label>Notes<textarea data-field="notes">${escapeHTML(profile.notes || "")}</textarea></label>
             <label>Disabled
               <select data-field="disabled">
                 <option value="false" ${profile.disabled ? "" : "selected"}>false</option>
                 <option value="true" ${profile.disabled ? "selected" : ""}>true</option>
               </select>
             </label>
-            <button class="secondary" data-remove="${index}">Remove Profile</button>
           </div>
         </div>
       `;
@@ -322,19 +445,84 @@
         const idx = Number(btn.getAttribute("data-remove"));
         state.config.profiles.splice(idx, 1);
         renderConfig();
+        renderNetworks();
+      }));
+      document.querySelectorAll("[data-move]").forEach(btn => btn.addEventListener("click", () => {
+        const idx = Number(btn.getAttribute("data-move"));
+        const direction = btn.getAttribute("data-direction");
+        adjustPriority(idx, direction);
       }));
     }
 
+    function adjustPriority(index, direction) {
+      const profiles = knownProfiles();
+      const profile = profiles[index];
+      if (!profile) return;
+      const delta = direction === "up" ? 10 : -10;
+      profile.priority = Math.max(0, Number(profile.priority || 0) + delta);
+      profiles.sort((a, b) => {
+        if (Number(a.priority || 0) !== Number(b.priority || 0)) {
+          return Number(b.priority || 0) - Number(a.priority || 0);
+        }
+        return String(a.ssid || "").localeCompare(String(b.ssid || ""));
+      });
+      renderConfig();
+      renderNetworks();
+    }
+
+    function addOrUpdateProfileFromNetwork(ssid, security, prefer = false) {
+      if (!state.config) return;
+      const existing = findProfileBySSID(ssid);
+      if (existing) {
+        existing.disabled = false;
+        existing.priority = prefer ? nextPriority() : Number(existing.priority || 100);
+        existing.notes = existing.notes || `Added from scan (${security || "unknown security"}).`;
+      } else {
+        state.config.profiles.push({
+          id: slugSSID(ssid),
+          ssid,
+          priority: prefer ? nextPriority() : 100,
+          connection_name: "",
+          password: "",
+          password_file: "",
+          notes: `Added from scan (${security || "unknown security"}).`,
+          disabled: false
+        });
+      }
+      state.config.profiles.sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0));
+      renderConfig();
+      renderNetworks();
+    }
+
     function renderNetworks() {
-      const rows = (state.status?.scan?.available_networks || []).map(net => `
+      const rows = (state.status?.scan?.available_networks || []).map((net, index) => {
+        const profile = findProfileBySSID(net.ssid);
+        const known = Boolean(profile);
+        const current = Boolean(net.in_use || profile?.current || state.status?.current_connection?.ssid === net.ssid);
+        return `
         <tr>
-          <td>${net.ssid}</td>
-          <td>${net.signal}%</td>
-          <td>${net.security || "open"}</td>
-          <td>${net.in_use ? "yes" : ""}</td>
+          <td>${escapeHTML(net.ssid)}</td>
+          <td>${escapeHTML(net.signal)}%</td>
+          <td>${escapeHTML(net.security || "open")}</td>
+          <td>${current ? badge("current", "good") : known ? badge("known", "good") : badge("new", "")}</td>
+          <td>
+            <div class="network-actions">
+              <button class="secondary inline-action" data-add-network="${index}">${known ? "Update" : "Add"}</button>
+              <button class="inline-action" data-prefer-network="${index}">${known ? "Prefer" : "Add top"}</button>
+            </div>
+          </td>
         </tr>
-      `).join("");
-      document.getElementById("networksTable").innerHTML = rows || `<tr><td colspan="4" class="muted">No scan data yet</td></tr>`;
+      `;
+      }).join("");
+      document.getElementById("networksTable").innerHTML = rows || `<tr><td colspan="5" class="muted">No scan data yet</td></tr>`;
+      document.querySelectorAll("[data-add-network]").forEach(btn => btn.addEventListener("click", () => {
+        const net = state.status?.scan?.available_networks?.[Number(btn.getAttribute("data-add-network"))];
+        if (net?.ssid) addOrUpdateProfileFromNetwork(net.ssid, net.security, false);
+      }));
+      document.querySelectorAll("[data-prefer-network]").forEach(btn => btn.addEventListener("click", () => {
+        const net = state.status?.scan?.available_networks?.[Number(btn.getAttribute("data-prefer-network"))];
+        if (net?.ssid) addOrUpdateProfileFromNetwork(net.ssid, net.security, true);
+      }));
     }
 
     async function loadLogs() {
