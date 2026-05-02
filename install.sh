@@ -176,11 +176,8 @@ build_dashboard_from_source() {
 }
 
 ensure_dashboard_binary() {
-    if [[ -x "$DASHBOARD_BINARY_PATH" && "$INSTALL_DASHBOARD_ONLY" != "true" && "$DASHBOARD_VERSION" == "latest" ]]; then
-        log_info "Dashboard binary already present at $DASHBOARD_BINARY_PATH"
-        return 0
-    fi
-
+    # Reinstall intentionally refreshes the dashboard binary. Otherwise a repo
+    # checkout can move to a newer tag while the old binary remains in build/.
     download_dashboard_binary && return 0
     log_info "Falling back to local dashboard build from source..."
     build_dashboard_from_source
