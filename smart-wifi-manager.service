@@ -10,6 +10,7 @@ User=root
 ExecStart=__SWM_INSTALL_DIR__/smart-wifi-manager.sh run --config __SWM_CONFIG_PATH__ --status-file __SWM_STATUS_PATH__ --state-dir __SWM_STATE_DIR__ --log-file __SWM_LOG_PATH__
 Restart=on-failure
 RestartSec=5
+RuntimeDirectory=smart-wifi-manager
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full

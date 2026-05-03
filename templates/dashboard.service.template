@@ -9,10 +9,11 @@ Type=simple
 ExecStart=__SWM_DASHBOARD_BINARY__ --listen __SWM_DASHBOARD_LISTEN__ --config __SWM_CONFIG_PATH__ --status __SWM_STATUS_PATH__ --control-dir __SWM_CONTROL_DIR__ --log-file __SWM_LOG_PATH__
 Restart=on-failure
 RestartSec=5
+RuntimeDirectory=smart-wifi-manager
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=__SWM_CONFIG_DIR__ __SWM_RUN_DIR__ __SWM_LOG_DIR__
+ReadWritePaths=__SWM_CONFIG_DIR__ __SWM_STATE_DIR__ __SWM_RUN_DIR__ __SWM_LOG_DIR__
 
 [Install]
 WantedBy=multi-user.target
