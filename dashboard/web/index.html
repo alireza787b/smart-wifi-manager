@@ -96,6 +96,15 @@
       background: #7f2f2b;
       border-color: #91413c;
     }
+    button.link-button {
+      width: auto;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #91caff;
+      font-weight: 700;
+      text-align: left;
+    }
     button:disabled {
       opacity: 0.55;
       cursor: not-allowed;
@@ -141,9 +150,9 @@
     }
     .profile-tools {
       display: grid;
-      grid-template-columns: repeat(3, minmax(42px, 1fr));
+      grid-template-columns: repeat(4, minmax(42px, 1fr));
       gap: 6px;
-      flex: 0 0 150px;
+      flex: 0 0 205px;
     }
     .profile-tools button,
     .inline-action {
@@ -165,6 +174,73 @@
       width: auto;
       min-width: 86px;
     }
+    .dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(4, 10, 18, 0.68);
+      z-index: 50;
+    }
+    .dialog-backdrop.open {
+      display: flex;
+    }
+    .dialog {
+      width: min(560px, 100%);
+      max-height: min(760px, calc(100vh - 36px));
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #13202c;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.46);
+    }
+    .dialog-header,
+    .dialog-body,
+    .dialog-footer {
+      padding: 16px;
+    }
+    .dialog-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .dialog-header h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+    }
+    .dialog-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .dialog-close {
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      flex: 0 0 auto;
+      background: #223040;
+      border-color: #2e4356;
+    }
+    .dialog-footer {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--line);
+    }
+    .dialog-footer button {
+      flex: 1 1 160px;
+    }
+    .form-help {
+      margin: -4px 0 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
     .muted { color: var(--muted); }
     .hint {
       color: var(--muted);
@@ -179,6 +255,9 @@
       table { font-size: 12px; }
       th, td { padding: 7px 4px; }
       .network-actions button { flex: 1 1 72px; min-width: 0; }
+      .dialog-backdrop { align-items: flex-end; padding: 10px; }
+      .dialog { max-height: calc(100vh - 20px); border-radius: 16px; }
+      .dialog-footer { flex-direction: column; }
     }
   </style>
 </head>
@@ -282,8 +361,41 @@
     </section>
   </main>
 
+  <div class="dialog-backdrop" id="profileDialogBackdrop" role="presentation">
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="profileDialogTitle">
+      <div class="dialog-header">
+        <div>
+          <h2 id="profileDialogTitle">Wi-Fi Profile</h2>
+          <p id="profileDialogSubtitle">Create or update a known network profile.</p>
+        </div>
+        <button class="dialog-close" id="profileDialogClose" type="button" aria-label="Close profile editor">×</button>
+      </div>
+      <div class="dialog-body stack">
+        <label>SSID<input id="dialogSSID" autocomplete="off"></label>
+        <label>ID<input id="dialogID" autocomplete="off"></label>
+        <label>Priority<input id="dialogPriority" type="number" min="0"></label>
+        <label>Connection Name<input id="dialogConnectionName" autocomplete="off" placeholder="blank = SSID"></label>
+        <label>Password<input id="dialogPassword" type="password" autocomplete="new-password"></label>
+        <p class="form-help" id="dialogPasswordHelp">Use this for WPA/WPA2 networks. Stored passwords are never shown back in the UI.</p>
+        <label>Password File<input id="dialogPasswordFile" autocomplete="off" placeholder="/root/.wifi/field.pass"></label>
+        <label>Notes<textarea id="dialogNotes"></textarea></label>
+        <label>Disabled
+          <select id="dialogDisabled">
+            <option value="false">false</option>
+            <option value="true">true</option>
+          </select>
+        </label>
+      </div>
+      <div class="dialog-footer">
+        <button id="dialogSaveBtn" type="button">Save Profile</button>
+        <button id="dialogSaveConnectBtn" type="button">Save &amp; Scan Now</button>
+        <button class="secondary" id="dialogCancelBtn" type="button">Cancel</button>
+      </div>
+    </section>
+  </div>
+
   <script>
-    const state = { config: null, status: null, meta: null };
+    const state = { config: null, status: null, meta: null, profileDialog: null };
 
     function escapeHTML(value) {
       return String(value ?? "").replace(/[&<>"']/g, char => ({
@@ -320,6 +432,11 @@
 
     function statusProfileBySSID(ssid) {
       return (state.status?.profiles || []).find(profile => String(profile.ssid || "").toLowerCase() === String(ssid || "").toLowerCase());
+    }
+
+    function isSecuredNetwork(security) {
+      const value = String(security || "").trim().toLowerCase();
+      return Boolean(value && value !== "open" && value !== "--");
     }
 
     async function fetchJSON(path, options = {}) {
@@ -401,6 +518,7 @@
               <span>${ssid || "SSID not set"}</span>
             </div>
             <div class="profile-tools">
+              <button class="secondary" data-edit-profile="${index}" title="Edit profile">Edit</button>
               <button class="secondary" data-move="${index}" data-direction="up" title="Raise priority">Up</button>
               <button class="secondary" data-move="${index}" data-direction="down" title="Lower priority">Down</button>
               <button class="danger" data-remove="${index}" title="Remove profile">Remove</button>
@@ -452,6 +570,11 @@
         const direction = btn.getAttribute("data-direction");
         adjustPriority(idx, direction);
       }));
+      document.querySelectorAll("[data-edit-profile]").forEach(btn => btn.addEventListener("click", () => {
+        const idx = Number(btn.getAttribute("data-edit-profile"));
+        const profile = knownProfiles()[idx];
+        if (profile) openProfileDialog({ profile, index: idx, prefer: false, source: "profile" });
+      }));
     }
 
     function adjustPriority(index, direction) {
@@ -470,28 +593,101 @@
       renderNetworks();
     }
 
-    function addOrUpdateProfileFromNetwork(ssid, security, prefer = false) {
+    function openProfileDialog({ profile = null, index = null, network = null, prefer = false, source = "manual" } = {}) {
+      const secured = network ? isSecuredNetwork(network.security) : true;
+      const existing = profile || (network?.ssid ? findProfileBySSID(network.ssid) : null);
+      const title = network
+        ? `${existing ? "Update" : "Add"} ${network.ssid}`
+        : existing ? `Edit ${existing.ssid || existing.id}` : "Add Wi-Fi profile";
+      const subtitle = network
+        ? `${network.security || "open"} network · signal ${network.signal ?? "n/a"}%${prefer ? " · will be preferred" : ""}`
+        : "Known profiles are the only SSIDs this service may join.";
+
+      state.profileDialog = {
+        index,
+        network,
+        prefer,
+        source,
+        existingID: existing?.id || null,
+      };
+
+      document.getElementById("profileDialogTitle").textContent = title;
+      document.getElementById("profileDialogSubtitle").textContent = subtitle;
+      document.getElementById("dialogSSID").value = existing?.ssid || network?.ssid || "";
+      document.getElementById("dialogID").value = existing?.id || slugSSID(network?.ssid || "");
+      document.getElementById("dialogPriority").value = prefer ? nextPriority() : (existing?.priority ?? 100);
+      document.getElementById("dialogConnectionName").value = existing?.connection_name || "";
+      document.getElementById("dialogPassword").value = "";
+      document.getElementById("dialogPassword").placeholder = existing?.has_inline_password
+        ? "stored - leave blank to keep"
+        : secured ? "required for secured Wi-Fi" : "optional for open network";
+      document.getElementById("dialogPasswordFile").value = existing?.password_file || "";
+      document.getElementById("dialogNotes").value = existing?.notes || (network ? `Added from scan (${network.security || "unknown security"}).` : "");
+      document.getElementById("dialogDisabled").value = String(Boolean(existing?.disabled));
+      document.getElementById("dialogPasswordHelp").textContent = existing?.has_inline_password
+        ? "A password is already stored. Leave blank to keep it, or type a new password to replace it."
+        : secured
+          ? "This scanned network is secured. Type the Wi-Fi password here or provide a local password file."
+          : "Open networks do not need a password. If this SSID actually requires one, type it here.";
+
+      document.getElementById("profileDialogBackdrop").classList.add("open");
+      setTimeout(() => {
+        const focusTarget = secured && !existing?.has_inline_password
+          ? document.getElementById("dialogPassword")
+          : document.getElementById("dialogSSID");
+        focusTarget?.focus();
+      }, 0);
+    }
+
+    function closeProfileDialog() {
+      state.profileDialog = null;
+      document.getElementById("profileDialogBackdrop").classList.remove("open");
+    }
+
+    function readDialogProfile() {
+      return {
+        id: document.getElementById("dialogID").value.trim() || slugSSID(document.getElementById("dialogSSID").value),
+        ssid: document.getElementById("dialogSSID").value.trim(),
+        priority: Number(document.getElementById("dialogPriority").value || 100),
+        connection_name: document.getElementById("dialogConnectionName").value.trim(),
+        password: document.getElementById("dialogPassword").value,
+        password_file: document.getElementById("dialogPasswordFile").value.trim(),
+        notes: document.getElementById("dialogNotes").value.trim(),
+        disabled: document.getElementById("dialogDisabled").value === "true",
+      };
+    }
+
+    async function saveProfileDialog({ connectNow = false } = {}) {
       if (!state.config) return;
-      const existing = findProfileBySSID(ssid);
-      if (existing) {
-        existing.disabled = false;
-        existing.priority = prefer ? nextPriority() : Number(existing.priority || 100);
-        existing.notes = existing.notes || `Added from scan (${security || "unknown security"}).`;
-      } else {
-        state.config.profiles.push({
-          id: slugSSID(ssid),
-          ssid,
-          priority: prefer ? nextPriority() : 100,
-          connection_name: "",
-          password: "",
-          password_file: "",
-          notes: `Added from scan (${security || "unknown security"}).`,
-          disabled: false
-        });
+      const dialogState = state.profileDialog || {};
+      const profile = readDialogProfile();
+      if (!profile.ssid) {
+        document.getElementById("dialogSSID").focus();
+        return;
       }
+
+      const existingIndex = dialogState.existingID
+        ? state.config.profiles.findIndex(item => item.id === dialogState.existingID)
+        : Number.isInteger(dialogState.index) ? dialogState.index : -1;
+
+      if (existingIndex >= 0 && state.config.profiles[existingIndex]) {
+        const existing = state.config.profiles[existingIndex];
+        state.config.profiles[existingIndex] = {
+          ...existing,
+          ...profile,
+          has_inline_password: existing.has_inline_password,
+        };
+      } else {
+        state.config.profiles.push(profile);
+      }
+
       state.config.profiles.sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0));
-      renderConfig();
-      renderNetworks();
+      await persistConfig(state.config);
+      if (connectNow) {
+        await triggerScan({ refresh: false });
+      }
+      closeProfileDialog();
+      await refreshAll();
     }
 
     function renderNetworks() {
@@ -507,7 +703,7 @@
           <td>${current ? badge("current", "good") : known ? badge("known", "good") : badge("new", "")}</td>
           <td>
             <div class="network-actions">
-              <button class="secondary inline-action" data-add-network="${index}">${known ? "Update" : "Add"}</button>
+              <button class="secondary inline-action" data-add-network="${index}">${known ? "Edit" : "Add"}</button>
               <button class="inline-action" data-prefer-network="${index}">${known ? "Prefer" : "Add top"}</button>
             </div>
           </td>
@@ -517,11 +713,11 @@
       document.getElementById("networksTable").innerHTML = rows || `<tr><td colspan="5" class="muted">No scan data yet</td></tr>`;
       document.querySelectorAll("[data-add-network]").forEach(btn => btn.addEventListener("click", () => {
         const net = state.status?.scan?.available_networks?.[Number(btn.getAttribute("data-add-network"))];
-        if (net?.ssid) addOrUpdateProfileFromNetwork(net.ssid, net.security, false);
+        if (net?.ssid) openProfileDialog({ profile: findProfileBySSID(net.ssid), network: net, prefer: false, source: "scan" });
       }));
       document.querySelectorAll("[data-prefer-network]").forEach(btn => btn.addEventListener("click", () => {
         const net = state.status?.scan?.available_networks?.[Number(btn.getAttribute("data-prefer-network"))];
-        if (net?.ssid) addOrUpdateProfileFromNetwork(net.ssid, net.security, true);
+        if (net?.ssid) openProfileDialog({ profile: findProfileBySSID(net.ssid), network: net, prefer: true, source: "scan" });
       }));
     }
 
@@ -568,19 +764,23 @@
       };
     }
 
-    async function saveConfig() {
-      state.config = readConfigFromForm();
+    async function persistConfig(config) {
       await fetchJSON("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state.config)
+        body: JSON.stringify(config)
       });
-      await refreshAll();
     }
 
-    async function triggerScan() {
+    async function saveConfig({ refresh = true } = {}) {
+      state.config = readConfigFromForm();
+      await persistConfig(state.config);
+      if (refresh) await refreshAll();
+    }
+
+    async function triggerScan({ refresh = true } = {}) {
       await fetchJSON("/api/actions/scan", { method: "POST" });
-      await refreshAll();
+      if (refresh) await refreshAll();
     }
 
     async function exportConfig() {
@@ -612,8 +812,17 @@
     document.getElementById("exportBtn").addEventListener("click", exportConfig);
     document.getElementById("importBtn").addEventListener("click", importConfig);
     document.getElementById("addProfileBtn").addEventListener("click", () => {
-      state.config.profiles.push({ id: "", ssid: "", priority: 100, connection_name: "", password: "", password_file: "", notes: "", disabled: false });
-      renderConfig();
+      openProfileDialog({ profile: null, index: null, prefer: false, source: "manual" });
+    });
+    document.getElementById("profileDialogClose").addEventListener("click", closeProfileDialog);
+    document.getElementById("dialogCancelBtn").addEventListener("click", closeProfileDialog);
+    document.getElementById("dialogSaveBtn").addEventListener("click", () => saveProfileDialog({ connectNow: false }));
+    document.getElementById("dialogSaveConnectBtn").addEventListener("click", () => saveProfileDialog({ connectNow: true }));
+    document.getElementById("profileDialogBackdrop").addEventListener("click", event => {
+      if (event.target.id === "profileDialogBackdrop") closeProfileDialog();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && state.profileDialog) closeProfileDialog();
     });
 
     refreshAll().catch(err => {

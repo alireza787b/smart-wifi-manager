@@ -58,21 +58,25 @@ From a scan:
 
 1. Click `Trigger Scan`.
 2. In `Available Networks`, click `Add` for the SSID.
-3. Fill the password or password file if the network is secured.
-4. Adjust priority if needed.
-5. Click `Save Config`.
-6. Click `Trigger Scan` or wait for the next service cycle.
+3. The profile dialog opens with the SSID, security, signal, and suggested
+   priority.
+4. Fill the `Password` field or `Password File` if the network is secured.
+5. Click `Save Profile`, or `Save & Scan Now` if you want the service to
+   evaluate the profile immediately.
+
+`Add top` opens the same dialog with a higher suggested priority. Use it when
+the new network should win over other visible known networks.
 
 Manually:
 
 1. Click `Add Profile` in `Known Profiles`.
-2. Fill `ID` with a stable lowercase name such as `field-router`.
-3. Fill `SSID` exactly as broadcast by the access point.
-4. Set `Priority`. Higher values win when multiple known networks are visible.
-5. Add either `Password` or `Password File`.
-6. Leave `Disabled` as `false`.
-7. Click `Save Config`.
-8. Click `Trigger Scan` or wait for the next scan cycle.
+2. The profile dialog opens.
+3. Fill `ID` with a stable lowercase name such as `field-router`.
+4. Fill `SSID` exactly as broadcast by the access point.
+5. Set `Priority`. Higher values win when multiple known networks are visible.
+6. Add either `Password` or `Password File`.
+7. Leave `Disabled` as `false`.
+8. Click `Save Profile`, or `Save & Scan Now`.
 
 ### Change Priority
 
@@ -91,8 +95,9 @@ it only updates policy and reports what would be preferred.
 
 ### Update A Password
 
-1. Type the new password in the profile `Password` field.
-2. Click `Save Config`.
+1. Click `Edit` on the known profile.
+2. Type the new password in the profile `Password` field.
+3. Click `Save Profile`, or `Save & Scan Now`.
 
 If the password field is left blank, the existing stored inline password is
 preserved. This prevents accidental credential deletion during normal edits.

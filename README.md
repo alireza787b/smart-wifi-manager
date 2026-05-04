@@ -233,6 +233,11 @@ If you use this tool as part of a larger fleet system, the dashboard is still a
 single-host control surface. Fleet-wide rollout should come from your external
 orchestrator, not by manually editing every node one by one.
 
+When adding a scanned secured SSID, the dashboard opens a profile dialog with a
+password field instead of silently creating an unusable blank profile. Stored
+inline passwords remain redacted; leave the password field blank while editing
+to keep the existing stored secret.
+
 Documentation:
 
 - [Dashboard Guide](docs/DASHBOARD.md)
@@ -270,14 +275,14 @@ python3 -m pytest tests -q
 
 ```bash
 cd dashboard
-go build ./cmd
+go build -o smart-wifi-manager-dashboard ./cmd
 ```
 
 ### Installer Validation
 
 ```bash
 bash -n install.sh configure_smart_wifi_manager.sh smart-wifi-manager.sh
-go test ./dashboard/...
+(cd dashboard && go test ./...)
 ```
 
 ## License
