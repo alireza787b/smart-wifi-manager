@@ -445,6 +445,21 @@
         .slice(0, 48) || "network";
     }
 
+    function uniqueProfileID(baseID, profiles, ignoreIndex = -1) {
+      const base = slugSSID(baseID);
+      const used = new Set(
+        profiles
+          .map((profile, index) => index === ignoreIndex ? null : String(profile.id || "").toLowerCase())
+          .filter(Boolean)
+      );
+      if (!used.has(base.toLowerCase())) return base;
+      for (let suffix = 2; suffix < 1000; suffix += 1) {
+        const candidate = `${base}-${suffix}`;
+        if (!used.has(candidate.toLowerCase())) return candidate;
+      }
+      return `${base}-${Date.now()}`;
+    }
+
     function knownProfiles() {
       return state.config?.profiles || [];
     }
@@ -693,12 +708,14 @@
         prefer,
         source,
         existingID: existing?.id || null,
+        lastAutoID: existing ? existing.id : network?.ssid ? slugSSID(network.ssid) : "",
       };
 
       document.getElementById("profileDialogTitle").textContent = title;
       document.getElementById("profileDialogSubtitle").textContent = subtitle;
       document.getElementById("dialogSSID").value = existing?.ssid || network?.ssid || "";
-      document.getElementById("dialogID").value = existing?.id || slugSSID(network?.ssid || "");
+      document.getElementById("dialogID").value = existing?.id || (network?.ssid ? slugSSID(network.ssid) : "");
+      document.getElementById("dialogID").placeholder = existing ? "profile id" : "auto from SSID";
       document.getElementById("dialogPriority").value = prefer ? nextPriority() : (existing?.priority ?? 100);
       document.getElementById("dialogConnectionName").value = existing?.connection_name || "";
       document.getElementById("dialogPassword").value = "";
@@ -716,6 +733,7 @@
           : "Open networks do not need a password. If this SSID actually requires one, type it here.";
 
       document.getElementById("profileDialogBackdrop").classList.add("open");
+      syncDialogIDFromSSID();
       setTimeout(() => {
         const focusTarget = secured && !existing?.has_inline_password
           ? document.getElementById("dialogPassword")
@@ -727,6 +745,19 @@
     function closeProfileDialog() {
       state.profileDialog = null;
       document.getElementById("profileDialogBackdrop").classList.remove("open");
+    }
+
+    function syncDialogIDFromSSID() {
+      const dialogState = state.profileDialog;
+      if (!dialogState || dialogState.existingID) return;
+      const ssidInput = document.getElementById("dialogSSID");
+      const idInput = document.getElementById("dialogID");
+      const currentID = idInput.value.trim();
+      const lastAutoID = dialogState.lastAutoID || "";
+      if (currentID && currentID !== lastAutoID) return;
+      const nextID = ssidInput.value.trim() ? slugSSID(ssidInput.value) : "";
+      idInput.value = nextID;
+      dialogState.lastAutoID = nextID;
     }
 
     function readDialogProfile() {
@@ -758,16 +789,18 @@
           : state.config.profiles.findIndex(item => String(item.ssid || "").toLowerCase() === String(profile.ssid || "").toLowerCase());
 
       await mutateProfiles(profiles => {
+        const writeProfile = { ...profile };
         if (existingIndex >= 0 && profiles[existingIndex]) {
           const existing = profiles[existingIndex];
           profiles[existingIndex] = {
             ...existing,
-            ...profile,
+            ...writeProfile,
             id: existing.id,
             has_inline_password: existing.has_inline_password,
           };
         } else {
-          profiles.push(profile);
+          writeProfile.id = uniqueProfileID(writeProfile.id || writeProfile.ssid, profiles);
+          profiles.push(writeProfile);
         }
         return profiles;
       }, {
@@ -897,6 +930,7 @@
     });
     document.getElementById("profileDialogClose").addEventListener("click", closeProfileDialog);
     document.getElementById("dialogCancelBtn").addEventListener("click", closeProfileDialog);
+    document.getElementById("dialogSSID").addEventListener("input", syncDialogIDFromSSID);
     document.getElementById("dialogSaveBtn").addEventListener("click", handleAction(() => saveProfileDialog({ connectNow: false })));
     document.getElementById("dialogSaveConnectBtn").addEventListener("click", handleAction(() => saveProfileDialog({ connectNow: true })));
     document.getElementById("profileDialogBackdrop").addEventListener("click", event => {
