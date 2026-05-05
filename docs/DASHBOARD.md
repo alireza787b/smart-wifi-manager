@@ -69,24 +69,21 @@ the new network should win over other visible known networks.
 
 Manually:
 
-1. Click `Add Profile` in `Known Profiles`.
+1. Click `Add Manual SSID` in `Known Profiles`.
 2. The profile dialog opens.
-3. Fill `ID` with a stable lowercase name such as `field-router`.
-4. Fill `SSID` exactly as broadcast by the access point.
-5. Set `Priority`. Higher values win when multiple known networks are visible.
-6. Add either `Password` or `Password File`.
-7. Leave `Disabled` as `false`.
-8. Click `Save Profile`, or `Save & Scan Now`.
+3. Fill `SSID` exactly as broadcast by the access point.
+4. Set `Priority`. Higher values win when multiple known networks are visible.
+5. Add either `Password` or `Password File` for secured networks.
+6. Leave `Disabled` as `false`.
+7. Click `Save Profile`, or `Save & Scan Now`.
 
 ### Change Priority
 
-Use either method:
+Use one of these actions on the profile card:
 
-- click `Up` or `Down` on the profile card
-- edit the numeric `Priority` value directly
-
-Then click `Save Config`. Click `Trigger Scan` if you want the decision
-evaluated immediately.
+- `Up` or `Down` changes the numeric priority and saves immediately.
+- `Prefer` raises that profile above all other known profiles and triggers a
+  scan immediately.
 
 `Prefer` or `Add top` in the scanned network table raises that SSID above the
 current highest known priority. In `manage` mode this can cause the service to
@@ -104,9 +101,10 @@ preserved. This prevents accidental credential deletion during normal edits.
 
 ### Disable Or Remove A Profile
 
-- To keep the profile but stop using it, set `Disabled` to `true` and click
-  `Save Config`.
-- To delete it from the config, click `Remove Profile` and then `Save Config`.
+- To keep the profile but stop using it, click `Edit`, set `Disabled` to
+  `true`, then save.
+- To delete it from the config, click `Remove` and confirm. Removal saves
+  immediately.
 
 On remote systems, prefer disabling first. Removing or replacing the currently
 working management network can make the host unreachable.

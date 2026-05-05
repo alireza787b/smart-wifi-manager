@@ -223,7 +223,8 @@ Main actions:
 - inspect service state
 - inspect visible networks
 - add/edit/remove profiles
-- change priorities and runtime policy
+- change priorities with immediate-save `Up`, `Down`, and `Prefer` actions
+- change runtime policy separately
 - import/merge/replace config bundles
 - export full config
 - trigger an immediate scan
@@ -237,6 +238,10 @@ When adding a scanned secured SSID, the dashboard opens a profile dialog with a
 password field instead of silently creating an unusable blank profile. Stored
 inline passwords remain redacted; leave the password field blank while editing
 to keep the existing stored secret.
+
+Known profile cards are intentionally read-only. Use `Edit`, `Prefer`, `Up`,
+`Down`, or `Remove` so every profile mutation is explicit, saved immediately,
+and less likely to be confused with unsaved form state.
 
 Documentation:
 

@@ -124,14 +124,29 @@
       flex-wrap: wrap;
     }
     .actions > * { flex: 1 1 180px; }
-    .profile-editor {
+    .notice {
+      display: none;
+      margin: 14px 0 0;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(28, 42, 57, 0.82);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .notice.open { display: block; }
+    .notice.good { border-color: rgba(76,195,138,0.42); background: rgba(76,195,138,0.12); }
+    .notice.warn { border-color: rgba(240,180,41,0.42); background: rgba(240,180,41,0.12); }
+    .notice.bad { border-color: rgba(227,100,91,0.42); background: rgba(227,100,91,0.12); }
+    .profile-card {
       border: 1px solid var(--line);
       border-radius: 12px;
       padding: 12px;
       margin-bottom: 10px;
       background: rgba(14, 22, 31, 0.7);
     }
-    .profile-editor h3 { margin: 0; font-size: 14px; }
+    .profile-card h3 { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
     .profile-header {
       display: flex;
       align-items: flex-start;
@@ -149,21 +164,30 @@
       overflow-wrap: anywhere;
     }
     .profile-tools {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(42px, 1fr));
+      display: flex;
+      flex-wrap: wrap;
       gap: 6px;
-      flex: 0 0 205px;
+      justify-content: flex-end;
+      flex: 0 0 250px;
     }
     .profile-tools button,
     .inline-action {
       padding: 8px 10px;
       font-size: 12px;
+      width: auto;
     }
     .profile-summary {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      margin-bottom: 10px;
+      margin-top: 8px;
+    }
+    .profile-empty {
+      padding: 18px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      text-align: center;
     }
     .network-actions {
       display: flex;
@@ -258,6 +282,8 @@
       .dialog-backdrop { align-items: flex-end; padding: 10px; }
       .dialog { max-height: calc(100vh - 20px); border-radius: 16px; }
       .dialog-footer { flex-direction: column; }
+      .profile-tools { width: 100%; flex-basis: auto; justify-content: stretch; }
+      .profile-tools button { flex: 1 1 76px; }
     }
   </style>
 </head>
@@ -298,6 +324,7 @@
         <div style="margin-top: 12px;">
           <button class="warn" id="importBtn">Import Config</button>
         </div>
+        <div id="configNotice" class="notice" role="status" aria-live="polite"></div>
       </article>
     </section>
 
@@ -339,8 +366,10 @@
 
       <article class="panel">
         <h2>Known Profiles</h2>
+        <div class="actions" style="margin-bottom: 12px;">
+          <button id="addProfileBtn">Add Manual SSID</button>
+        </div>
         <div id="profiles"></div>
-        <button class="secondary" id="addProfileBtn">Add Profile</button>
         <p class="hint">Known profiles are the only networks this service will join. Higher priority wins when several known SSIDs are visible.</p>
       </article>
     </section>
@@ -448,6 +477,40 @@
       return response.json();
     }
 
+    function showNotice(message, level = "good") {
+      const node = document.getElementById("configNotice");
+      node.textContent = message;
+      node.className = `notice open ${level}`;
+    }
+
+    function clearNotice() {
+      const node = document.getElementById("configNotice");
+      node.textContent = "";
+      node.className = "notice";
+    }
+
+    function handleAction(fn) {
+      return async event => {
+        const button = event?.currentTarget;
+        const previousText = button?.textContent;
+        try {
+          clearNotice();
+          if (button) {
+            button.disabled = true;
+            button.textContent = "Working...";
+          }
+          await fn(event);
+        } catch (error) {
+          showNotice(String(error?.message || error), "bad");
+        } finally {
+          if (button) {
+            button.disabled = false;
+            button.textContent = previousText;
+          }
+        }
+      };
+    }
+
     function badge(label, cls = "") {
       return `<span class="badge ${cls}">${escapeHTML(label)}</span>`;
     }
@@ -505,20 +568,21 @@
     }
 
     function profileTemplate(profile, index) {
-      const profileID = escapeHTML(profile.id || profile.ssid || "New Profile");
+      const profileID = escapeHTML(profile.id || profile.ssid || "profile");
       const ssid = escapeHTML(profile.ssid || "");
       const current = Boolean(statusProfileBySSID(profile.ssid)?.current || profile.current);
       const disabled = Boolean(profile.disabled);
       const priority = Number(profile.priority ?? 100);
       return `
-        <div class="profile-editor" data-index="${index}">
+        <div class="profile-card" data-index="${index}">
           <div class="profile-header">
             <div class="profile-title">
-              <h3>${profileID}</h3>
-              <span>${ssid || "SSID not set"}</span>
+              <h3>${ssid || "SSID not set"}</h3>
+              <span>${profileID}${profile.connection_name ? ` · ${escapeHTML(profile.connection_name)}` : ""}</span>
             </div>
             <div class="profile-tools">
               <button class="secondary" data-edit-profile="${index}" title="Edit profile">Edit</button>
+              <button data-prefer-profile="${index}" title="Make highest priority and scan">Prefer</button>
               <button class="secondary" data-move="${index}" data-direction="up" title="Raise priority">Up</button>
               <button class="secondary" data-move="${index}" data-direction="down" title="Lower priority">Down</button>
               <button class="danger" data-remove="${index}" title="Remove profile">Remove</button>
@@ -529,22 +593,9 @@
             ${disabled ? badge("disabled", "warn") : badge("enabled", "good")}
             ${current ? badge("current", "good") : ""}
             ${profile.has_inline_password ? badge("password stored", "warn") : ""}
+            ${profile.password_file ? badge("password file", "") : ""}
           </div>
-          <div class="stack">
-            <label>ID<input data-field="id" value="${escapeHTML(profile.id || "")}"></label>
-            <label>SSID<input data-field="ssid" value="${escapeHTML(profile.ssid || "")}"></label>
-            <label>Priority<input data-field="priority" type="number" min="0" value="${profile.priority ?? 100}"></label>
-            <label>Connection Name<input data-field="connection_name" value="${escapeHTML(profile.connection_name || "")}"></label>
-            <label>Password<input data-field="password" value="" placeholder="${profile.has_inline_password ? "stored (leave blank to keep)" : "optional inline password"}"></label>
-            <label>Password File<input data-field="password_file" value="${escapeHTML(profile.password_file || "")}" placeholder="/root/.wifi/home.pass"></label>
-            <label>Notes<textarea data-field="notes">${escapeHTML(profile.notes || "")}</textarea></label>
-            <label>Disabled
-              <select data-field="disabled">
-                <option value="false" ${profile.disabled ? "" : "selected"}>false</option>
-                <option value="true" ${profile.disabled ? "selected" : ""}>true</option>
-              </select>
-            </label>
-          </div>
+          ${profile.notes ? `<p class="hint">${escapeHTML(profile.notes)}</p>` : ""}
         </div>
       `;
     }
@@ -558,39 +609,72 @@
       document.getElementById("cfgConnectTimeout").value = config.connect_timeout_sec ?? 10;
       document.getElementById("cfgCooldown").value = config.cooldown_sec ?? 60;
       document.getElementById("cfgAllowOpen").value = String(Boolean(config.allow_open_networks));
-      document.getElementById("profiles").innerHTML = (config.profiles || []).map(profileTemplate).join("");
-      document.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", () => {
+      document.getElementById("profiles").innerHTML = (config.profiles || []).length
+        ? (config.profiles || []).map(profileTemplate).join("")
+        : `<div class="profile-empty">No known Wi-Fi profiles yet. Add a manual SSID or add one from scan results.</div>`;
+      document.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", handleAction(async () => {
         const idx = Number(btn.getAttribute("data-remove"));
-        state.config.profiles.splice(idx, 1);
-        renderConfig();
-        renderNetworks();
-      }));
-      document.querySelectorAll("[data-move]").forEach(btn => btn.addEventListener("click", () => {
+        const profile = knownProfiles()[idx];
+        if (!profile) return;
+        const ok = window.confirm(`Remove Wi-Fi profile "${profile.ssid || profile.id}"? The manager will stop using this SSID after saving.`);
+        if (!ok) return;
+        await mutateProfiles(profiles => profiles.filter((_, index) => index !== idx), { message: "Profile removed." });
+      })));
+      document.querySelectorAll("[data-prefer-profile]").forEach(btn => btn.addEventListener("click", handleAction(async () => {
+        const idx = Number(btn.getAttribute("data-prefer-profile"));
+        await preferProfile(idx);
+      })));
+      document.querySelectorAll("[data-move]").forEach(btn => btn.addEventListener("click", handleAction(async () => {
         const idx = Number(btn.getAttribute("data-move"));
         const direction = btn.getAttribute("data-direction");
-        adjustPriority(idx, direction);
-      }));
-      document.querySelectorAll("[data-edit-profile]").forEach(btn => btn.addEventListener("click", () => {
+        await adjustPriority(idx, direction);
+      })));
+      document.querySelectorAll("[data-edit-profile]").forEach(btn => btn.addEventListener("click", handleAction(async () => {
         const idx = Number(btn.getAttribute("data-edit-profile"));
         const profile = knownProfiles()[idx];
         if (profile) openProfileDialog({ profile, index: idx, prefer: false, source: "profile" });
-      }));
+      })));
     }
 
-    function adjustPriority(index, direction) {
-      const profiles = knownProfiles();
-      const profile = profiles[index];
-      if (!profile) return;
-      const delta = direction === "up" ? 10 : -10;
-      profile.priority = Math.max(0, Number(profile.priority || 0) + delta);
-      profiles.sort((a, b) => {
+    function normalizedProfiles(profiles) {
+      return [...profiles].sort((a, b) => {
         if (Number(a.priority || 0) !== Number(b.priority || 0)) {
           return Number(b.priority || 0) - Number(a.priority || 0);
         }
         return String(a.ssid || "").localeCompare(String(b.ssid || ""));
       });
-      renderConfig();
-      renderNetworks();
+    }
+
+    async function mutateProfiles(mutator, { scan = false, message = "Profiles saved." } = {}) {
+      const currentProfiles = Array.isArray(state.config?.profiles) ? state.config.profiles : [];
+      const nextProfiles = normalizedProfiles(mutator([...currentProfiles]));
+      const nextConfig = {
+        ...readConfigFromForm(),
+        profiles: nextProfiles,
+      };
+      state.config = await persistConfig(nextConfig);
+      if (scan) await triggerScan({ refresh: false });
+      await refreshAll();
+      showNotice(message, "good");
+    }
+
+    async function adjustPriority(index, direction) {
+      const profiles = [...knownProfiles()];
+      const profile = profiles[index];
+      if (!profile) return;
+      const delta = direction === "up" ? 10 : -10;
+      profile.priority = Math.max(0, Number(profile.priority || 0) + delta);
+      await mutateProfiles(() => profiles, { message: "Priority updated." });
+    }
+
+    async function preferProfile(index) {
+      const profiles = [...knownProfiles()];
+      const profile = profiles[index];
+      if (!profile) return;
+      const maxPriority = profiles.reduce((max, item) => Math.max(max, Number(item.priority || 0)), 0);
+      profile.priority = maxPriority + 10;
+      profile.disabled = false;
+      await mutateProfiles(() => profiles, { scan: true, message: "Profile preferred and scan requested." });
     }
 
     function openProfileDialog({ profile = null, index = null, network = null, prefer = false, source = "manual" } = {}) {
@@ -624,6 +708,7 @@
       document.getElementById("dialogPasswordFile").value = existing?.password_file || "";
       document.getElementById("dialogNotes").value = existing?.notes || (network ? `Added from scan (${network.security || "unknown security"}).` : "");
       document.getElementById("dialogDisabled").value = String(Boolean(existing?.disabled));
+      document.getElementById("dialogID").readOnly = Boolean(existing);
       document.getElementById("dialogPasswordHelp").textContent = existing?.has_inline_password
         ? "A password is already stored. Leave blank to keep it, or type a new password to replace it."
         : secured
@@ -668,26 +753,28 @@
 
       const existingIndex = dialogState.existingID
         ? state.config.profiles.findIndex(item => item.id === dialogState.existingID)
-        : Number.isInteger(dialogState.index) ? dialogState.index : -1;
+        : Number.isInteger(dialogState.index)
+          ? dialogState.index
+          : state.config.profiles.findIndex(item => String(item.ssid || "").toLowerCase() === String(profile.ssid || "").toLowerCase());
 
-      if (existingIndex >= 0 && state.config.profiles[existingIndex]) {
-        const existing = state.config.profiles[existingIndex];
-        state.config.profiles[existingIndex] = {
-          ...existing,
-          ...profile,
-          has_inline_password: existing.has_inline_password,
-        };
-      } else {
-        state.config.profiles.push(profile);
-      }
-
-      state.config.profiles.sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0));
-      await persistConfig(state.config);
-      if (connectNow) {
-        await triggerScan({ refresh: false });
-      }
+      await mutateProfiles(profiles => {
+        if (existingIndex >= 0 && profiles[existingIndex]) {
+          const existing = profiles[existingIndex];
+          profiles[existingIndex] = {
+            ...existing,
+            ...profile,
+            id: existing.id,
+            has_inline_password: existing.has_inline_password,
+          };
+        } else {
+          profiles.push(profile);
+        }
+        return profiles;
+      }, {
+        scan: connectNow,
+        message: connectNow ? "Profile saved and scan requested." : "Profile saved.",
+      });
       closeProfileDialog();
-      await refreshAll();
     }
 
     function renderNetworks() {
@@ -738,19 +825,6 @@
     }
 
     function readConfigFromForm() {
-      const profiles = [...document.querySelectorAll(".profile-editor")].map(editor => {
-        const profile = {
-          id: editor.querySelector('[data-field="id"]').value.trim(),
-          ssid: editor.querySelector('[data-field="ssid"]').value.trim(),
-          priority: Number(editor.querySelector('[data-field="priority"]').value || 100),
-          connection_name: editor.querySelector('[data-field="connection_name"]').value.trim(),
-          password: editor.querySelector('[data-field="password"]').value,
-          password_file: editor.querySelector('[data-field="password_file"]').value.trim(),
-          notes: editor.querySelector('[data-field="notes"]').value.trim(),
-          disabled: editor.querySelector('[data-field="disabled"]').value === "true"
-        };
-        return profile;
-      });
       return {
         ...state.config,
         mode: document.getElementById("cfgMode").value,
@@ -760,12 +834,12 @@
         connect_timeout_sec: Number(document.getElementById("cfgConnectTimeout").value || 10),
         cooldown_sec: Number(document.getElementById("cfgCooldown").value || 60),
         allow_open_networks: document.getElementById("cfgAllowOpen").value === "true",
-        profiles
+        profiles: Array.isArray(state.config?.profiles) ? state.config.profiles : []
       };
     }
 
     async function persistConfig(config) {
-      await fetchJSON("/api/config", {
+      return fetchJSON("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config)
@@ -774,8 +848,9 @@
 
     async function saveConfig({ refresh = true } = {}) {
       state.config = readConfigFromForm();
-      await persistConfig(state.config);
+      state.config = await persistConfig(state.config);
       if (refresh) await refreshAll();
+      showNotice("Runtime settings saved.", "good");
     }
 
     async function triggerScan({ refresh = true } = {}) {
@@ -806,18 +881,24 @@
       await refreshAll();
     }
 
-    document.getElementById("refreshBtn").addEventListener("click", refreshAll);
-    document.getElementById("scanNowBtn").addEventListener("click", triggerScan);
-    document.getElementById("saveConfigBtn").addEventListener("click", saveConfig);
-    document.getElementById("exportBtn").addEventListener("click", exportConfig);
-    document.getElementById("importBtn").addEventListener("click", importConfig);
+    document.getElementById("refreshBtn").addEventListener("click", handleAction(async () => {
+      await refreshAll();
+      showNotice("Dashboard refreshed.", "good");
+    }));
+    document.getElementById("scanNowBtn").addEventListener("click", handleAction(async () => {
+      await triggerScan();
+      showNotice("Scan requested.", "good");
+    }));
+    document.getElementById("saveConfigBtn").addEventListener("click", handleAction(saveConfig));
+    document.getElementById("exportBtn").addEventListener("click", handleAction(exportConfig));
+    document.getElementById("importBtn").addEventListener("click", handleAction(importConfig));
     document.getElementById("addProfileBtn").addEventListener("click", () => {
       openProfileDialog({ profile: null, index: null, prefer: false, source: "manual" });
     });
     document.getElementById("profileDialogClose").addEventListener("click", closeProfileDialog);
     document.getElementById("dialogCancelBtn").addEventListener("click", closeProfileDialog);
-    document.getElementById("dialogSaveBtn").addEventListener("click", () => saveProfileDialog({ connectNow: false }));
-    document.getElementById("dialogSaveConnectBtn").addEventListener("click", () => saveProfileDialog({ connectNow: true }));
+    document.getElementById("dialogSaveBtn").addEventListener("click", handleAction(() => saveProfileDialog({ connectNow: false })));
+    document.getElementById("dialogSaveConnectBtn").addEventListener("click", handleAction(() => saveProfileDialog({ connectNow: true })));
     document.getElementById("profileDialogBackdrop").addEventListener("click", event => {
       if (event.target.id === "profileDialogBackdrop") closeProfileDialog();
     });
