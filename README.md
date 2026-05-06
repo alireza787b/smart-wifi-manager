@@ -19,6 +19,10 @@ an optional connectivity backend, but the tool stands on its own.
 
 ![Smart Wi-Fi Manager dashboard](docs/images/dashboard-overview.png)
 
+The preview uses synthetic SSIDs and status data. Do not publish screenshots
+from a customer fleet unless SSIDs, hostnames, addresses, and logs are
+sanitized.
+
 ## What It Does
 
 - watches Wi-Fi availability through NetworkManager
@@ -167,6 +171,7 @@ This tool is intentionally local-first:
 - it manages one host
 - it reads one canonical config file
 - it can import, merge, replace, and export profile bundles
+- it does not update itself or other hosts from the dashboard
 
 It does **not** perform multi-node rollout by itself.
 

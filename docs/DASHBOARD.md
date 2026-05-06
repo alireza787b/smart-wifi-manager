@@ -8,6 +8,9 @@ Default listen address:
 
 ![Smart Wi-Fi Manager dashboard](images/dashboard-overview.png)
 
+The screenshot uses synthetic demo data. Public documentation must not expose
+customer SSIDs, hostnames, IP addresses, passwords, or service logs.
+
 Expose remotely only when you intend to:
 
 ```bash
@@ -154,3 +157,8 @@ For fleet use:
 2. distribute it with your fleet orchestrator
 3. apply it with `merge` or `replace` depending on the rollout goal
 4. keep secrets local where possible through `password_file`
+
+In MDS deployments, MDS owns the fleet rollout: the Smart Wi-Fi release/ref and
+repo-owned profile are pinned in the MDS repo, then node git sync/reconcile
+updates each managed companion. Do not add a separate self-update workflow to
+this dashboard.
