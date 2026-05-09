@@ -398,22 +398,49 @@ def connect_profile(interface: str | None, profile: dict[str, Any], config: dict
     password = profile_password(profile)
     timeout = str(config["connect_timeout_sec"])
 
-    commands: list[list[str]] = []
+    commands: list[tuple[list[str], bool]] = []
+    if password:
+        commands.append(
+            (
+                [
+                    "timeout",
+                    timeout,
+                    "nmcli",
+                    "connection",
+                    "modify",
+                    connection_name,
+                    "802-11-wireless.ssid",
+                    ssid,
+                    "802-11-wireless-security.key-mgmt",
+                    "wpa-psk",
+                    "802-11-wireless-security.psk",
+                    password,
+                    "connection.autoconnect",
+                    "yes",
+                ],
+                False,
+            )
+        )
     if profile.get("connection_name"):
-        commands.append(["timeout", timeout, "nmcli", "connection", "up", "id", connection_name, "ifname", interface])
+        commands.append((["timeout", timeout, "nmcli", "connection", "up", "id", connection_name, "ifname", interface], True))
 
     connect_cmd = ["timeout", timeout, "nmcli", "dev", "wifi", "connect", ssid, "ifname", interface]
     if password:
         connect_cmd.extend(["password", password])
-    commands.append(connect_cmd)
+    connect_cmd.extend(["name", connection_name])
+    commands.append((connect_cmd, True))
 
-    for command in commands:
+    last_message = ""
+    for command, activates_connection in commands:
         code, stdout, stderr = run_command(command, logger, timeout=config["connect_timeout_sec"] + 2)
         if code == 0:
-            return True, stdout or f"Connected to {ssid}"
+            if activates_connection:
+                return True, stdout or f"Connected to {ssid}"
+            continue
+        last_message = stderr or stdout
         logger.warning("Wi-Fi connection attempt failed for %s via %s: %s", ssid, command[2], stderr or stdout)
 
-    return False, stderr or stdout or f"Failed to connect to {ssid}"
+    return False, last_message or f"Failed to connect to {ssid}"
 
 
 def configure_logger(log_path: Path, verbose: bool = False) -> logging.Logger:

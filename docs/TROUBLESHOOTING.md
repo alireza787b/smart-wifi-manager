@@ -46,6 +46,20 @@ sudo systemctl restart smart-wifi-manager.service
 
 Or trigger a scan from the dashboard/API.
 
+## Secured SSID fails with `key-mgmt` missing
+
+Older or manually created NetworkManager profiles can miss the WPA key-management
+field even when the Smart Wi-Fi profile has a password. Current releases repair
+that connection before activation by setting `wpa-psk` and the stored PSK.
+
+If the error persists, inspect and remove the stale connection profile:
+
+```bash
+nmcli connection show
+sudo nmcli connection delete "<connection-name>"
+sudo systemctl restart smart-wifi-manager.service
+```
+
 ## Wi-Fi credentials changed and nodes disappeared
 
 That is an operational rollout problem, not a software bug by itself.

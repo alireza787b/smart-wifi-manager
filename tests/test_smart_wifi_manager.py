@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 
-from smart_wifi_manager import choose_target_profile, load_config, redacted_config
+import smart_wifi_manager
+from smart_wifi_manager import choose_target_profile, connect_profile, load_config, redacted_config
 
 
 def test_load_config_normalizes_and_sorts_profiles(tmp_path):
@@ -86,3 +88,83 @@ def test_choose_target_profile_respects_signal_threshold_for_same_priority():
 
     assert selection.profile is None
     assert selection.reason == "signal-gain-below-threshold"
+
+
+def test_connect_profile_repairs_secured_networkmanager_connection(monkeypatch):
+    calls = []
+
+    def fake_run_command(command, logger, timeout=0):
+        calls.append(command)
+        if command[3:5] == ["connection", "modify"]:
+            return 0, "modified", ""
+        if command[3:5] == ["dev", "wifi"]:
+            return 0, "connected", ""
+        return 1, "", "unexpected"
+
+    monkeypatch.setattr(smart_wifi_manager, "run_command", fake_run_command)
+
+    ok, message = connect_profile(
+        "wlan0",
+        {"id": "field", "ssid": "FieldNet", "priority": 100, "password": "secret", "password_file": "", "connection_name": ""},
+        {"connect_timeout_sec": 10},
+        logging.getLogger("test"),
+    )
+
+    assert ok is True
+    assert message == "connected"
+    assert calls[0] == [
+        "timeout",
+        "10",
+        "nmcli",
+        "connection",
+        "modify",
+        "FieldNet",
+        "802-11-wireless.ssid",
+        "FieldNet",
+        "802-11-wireless-security.key-mgmt",
+        "wpa-psk",
+        "802-11-wireless-security.psk",
+        "secret",
+        "connection.autoconnect",
+        "yes",
+    ]
+    assert calls[1] == [
+        "timeout",
+        "10",
+        "nmcli",
+        "dev",
+        "wifi",
+        "connect",
+        "FieldNet",
+        "ifname",
+        "wlan0",
+        "password",
+        "secret",
+        "name",
+        "FieldNet",
+    ]
+
+
+def test_connect_profile_falls_back_when_repair_target_is_missing(monkeypatch):
+    calls = []
+
+    def fake_run_command(command, logger, timeout=0):
+        calls.append(command)
+        if command[3:5] == ["connection", "modify"]:
+            return 10, "", "unknown connection"
+        if command[3:5] == ["dev", "wifi"]:
+            return 0, "connected", ""
+        return 1, "", "unexpected"
+
+    monkeypatch.setattr(smart_wifi_manager, "run_command", fake_run_command)
+
+    ok, message = connect_profile(
+        "wlan0",
+        {"id": "field", "ssid": "FieldNet", "priority": 100, "password": "secret", "password_file": "", "connection_name": ""},
+        {"connect_timeout_sec": 10},
+        logging.getLogger("test"),
+    )
+
+    assert ok is True
+    assert message == "connected"
+    assert len(calls) == 2

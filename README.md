@@ -28,6 +28,7 @@ sanitized.
 - watches Wi-Fi availability through NetworkManager
 - tracks the current connection and visible candidate networks
 - chooses the best known profile using priority + signal policy
+- repairs stale secured NetworkManager profiles before connecting
 - switches only when policy says it should
 - writes live status to a predictable JSON file
 - exposes config/status/logs through a local dashboard/API
