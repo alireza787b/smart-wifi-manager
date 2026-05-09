@@ -421,7 +421,7 @@ def connect_profile(interface: str | None, profile: dict[str, Any], config: dict
                 False,
             )
         )
-    if profile.get("connection_name"):
+    if password or profile.get("connection_name"):
         commands.append((["timeout", timeout, "nmcli", "connection", "up", "id", connection_name, "ifname", interface], True))
 
     connect_cmd = ["timeout", timeout, "nmcli", "dev", "wifi", "connect", ssid, "ifname", interface]

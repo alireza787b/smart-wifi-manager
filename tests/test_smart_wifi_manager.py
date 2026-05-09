@@ -97,6 +97,8 @@ def test_connect_profile_repairs_secured_networkmanager_connection(monkeypatch):
         calls.append(command)
         if command[3:5] == ["connection", "modify"]:
             return 0, "modified", ""
+        if command[3:5] == ["connection", "up"]:
+            return 0, "activated", ""
         if command[3:5] == ["dev", "wifi"]:
             return 0, "connected", ""
         return 1, "", "unexpected"
@@ -111,7 +113,7 @@ def test_connect_profile_repairs_secured_networkmanager_connection(monkeypatch):
     )
 
     assert ok is True
-    assert message == "connected"
+    assert message == "activated"
     assert calls[0] == [
         "timeout",
         "10",
@@ -132,25 +134,24 @@ def test_connect_profile_repairs_secured_networkmanager_connection(monkeypatch):
         "timeout",
         "10",
         "nmcli",
-        "dev",
-        "wifi",
-        "connect",
+        "connection",
+        "up",
+        "id",
         "FieldNet",
         "ifname",
         "wlan0",
-        "password",
-        "secret",
-        "name",
-        "FieldNet",
     ]
+    assert len(calls) == 2
 
 
-def test_connect_profile_falls_back_when_repair_target_is_missing(monkeypatch):
+def test_connect_profile_creates_named_connection_after_repair_misses(monkeypatch):
     calls = []
 
     def fake_run_command(command, logger, timeout=0):
         calls.append(command)
         if command[3:5] == ["connection", "modify"]:
+            return 10, "", "unknown connection"
+        if command[3:5] == ["connection", "up"]:
             return 10, "", "unknown connection"
         if command[3:5] == ["dev", "wifi"]:
             return 0, "connected", ""
@@ -167,4 +168,19 @@ def test_connect_profile_falls_back_when_repair_target_is_missing(monkeypatch):
 
     assert ok is True
     assert message == "connected"
-    assert len(calls) == 2
+    assert calls[-1] == [
+        "timeout",
+        "10",
+        "nmcli",
+        "dev",
+        "wifi",
+        "connect",
+        "FieldNet",
+        "ifname",
+        "wlan0",
+        "password",
+        "secret",
+        "name",
+        "FieldNet",
+    ]
+    assert len(calls) == 3
