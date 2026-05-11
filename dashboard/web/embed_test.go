@@ -18,6 +18,8 @@ func TestDashboardIncludesExplicitProfileDialog(t *testing.T) {
 		"Save &amp; Scan Now",
 		"openProfileDialog",
 		"stored - leave blank to keep",
+		"profileSecretStatus",
+		"secret:",
 	} {
 		if !strings.Contains(html, required) {
 			t.Fatalf("dashboard missing %q", required)

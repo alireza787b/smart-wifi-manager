@@ -80,6 +80,70 @@ python3 smart_wifi_manager.py validate-config --config ./templates/config.json.t
 python3 smart_wifi_manager.py print-config --config /etc/smart-wifi-manager/config.json --redacted
 ```
 
+### Fleet Profile Control
+
+Profile-control commands use the shared MDS sidecar contract while remaining
+standalone and local-first. They never print raw passwords when `--redacted` or
+summary output is used.
+
+```bash
+python3 smart_wifi_manager.py profile list \
+  --config /etc/smart-wifi-manager/config.json \
+  --status-file /run/smart-wifi-manager/status.json
+```
+
+```bash
+python3 smart_wifi_manager.py profile export \
+  --config /etc/smart-wifi-manager/config.json
+```
+
+Profile export is redacted by default. `--include-secrets` is available only
+for local private backups and should never be used in fleet reports or public
+fixtures.
+
+```bash
+python3 smart_wifi_manager.py profile validate --file ./fleet-wifi.json
+```
+
+```bash
+python3 smart_wifi_manager.py profile diff \
+  --config /etc/smart-wifi-manager/config.json \
+  --baseline ./fleet-wifi.json \
+  --mode fleet-merge
+```
+
+```bash
+python3 smart_wifi_manager.py profile import \
+  --config /etc/smart-wifi-manager/config.json \
+  --file ./fleet-wifi.json \
+  --mode fleet-merge \
+  --dry-run \
+  --output-plan /var/lib/smart-wifi-manager/profile-control/last-plan.json
+```
+
+```bash
+python3 smart_wifi_manager.py profile apply \
+  --config /etc/smart-wifi-manager/config.json \
+  --plan /var/lib/smart-wifi-manager/profile-control/last-plan.json \
+  --confirm CONFIRMATION_TOKEN_FROM_DRY_RUN
+```
+
+```bash
+python3 smart_wifi_manager.py profile promote \
+  --config /etc/smart-wifi-manager/config.json \
+  --output ./reference-draft.json
+```
+
+Policy modes:
+
+- `observe`: report only; no apply mutation.
+- `local`: node-local profile remains authoritative.
+- `fleet-merge`: apply fleet baseline while preserving local additions.
+- `fleet-strict`: authoritative baseline; advanced/lab use only.
+
+`profile import` requires `--dry-run`. Applying changes requires
+`profile apply` with the confirmation token from the dry-run plan.
+
 ## Automation Pattern
 
 For orchestrated fleet use, treat Smart Wi-Fi Manager as a single-host runtime:

@@ -24,6 +24,18 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
+from profile_control import (
+    apply_plan_file,
+    dry_run_plan,
+    profile_diff,
+    profile_summary,
+    promote_reference_draft,
+    redacted_plan,
+    save_plan,
+    validate_bundle,
+    write_audit_entry,
+)
+
 
 def load_version() -> str:
     version_file = Path(__file__).with_name("VERSION")
@@ -40,6 +52,16 @@ DEFAULT_LOG_PATH = Path("/var/log/smart-wifi-manager/smart-wifi-manager.log")
 DEFAULT_CONTROL_DIR_NAME = "control"
 DEFAULT_SCAN_TRIGGER_FILE = "scan-now"
 DEFAULT_RELOAD_TRIGGER_FILE = "reload"
+DEFAULT_PROFILE_PLAN_PATH = DEFAULT_STATE_DIR / "profile-control" / "last-plan.json"
+SECRET_FIELD_NAMES = {"password", "passphrase", "psk", "secret", "token", "api_key", "private_key"}
+EXTERNAL_SECRET_FIELD_NAMES = {
+    "password_file",
+    "passphrase_file",
+    "secret_file",
+    "token_file",
+    "api_key_file",
+    "private_key_file",
+}
 
 
 def utc_now() -> str:
@@ -151,12 +173,52 @@ def load_config(path: Path) -> dict[str, Any]:
 
 def redacted_config(config: dict[str, Any]) -> dict[str, Any]:
     payload = json.loads(json.dumps(config))
-    for profile in payload.get("profiles", []):
-        inline_password = bool(profile.get("password"))
-        profile["has_inline_password"] = inline_password
-        if inline_password:
-            profile["password"] = ""
+    redact_secret_fields(payload)
     return payload
+
+
+def redact_secret_fields(value: Any) -> str:
+    states: list[str] = []
+    if isinstance(value, dict):
+        for key, raw_value in list(value.items()):
+            normalized = key.lower().replace("-", "_")
+            if normalized in EXTERNAL_SECRET_FIELD_NAMES:
+                state = "external file" if str(raw_value or "").strip() else "missing"
+                value[key] = ""
+                states.append(state)
+            elif normalized in SECRET_FIELD_NAMES:
+                state = "stored" if str(raw_value or "").strip() else "missing"
+                value[key] = ""
+                states.append(state)
+                if normalized == "password":
+                    value["has_inline_password"] = state == "stored"
+            else:
+                states.append(redact_secret_fields(raw_value))
+        if "profiles" not in value:
+            value["secret_status"] = dominant_secret_status([state for state in states if state])
+        if "clear_inline_password" in value:
+            value["clear_inline_password"] = False
+        return value.get("secret_status", dominant_secret_status([state for state in states if state]))
+    if isinstance(value, list):
+        for item in value:
+            states.append(redact_secret_fields(item))
+        return dominant_secret_status([state for state in states if state])
+    return "missing"
+
+
+def dominant_secret_status(states: list[str]) -> str:
+    for candidate in ("external file", "stored", "redacted"):
+        if candidate in states:
+            return candidate
+    return "missing"
+
+
+def load_status(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def run_command(command: list[str], logger: logging.Logger, timeout: int = 15) -> tuple[int, str, str]:
@@ -389,6 +451,34 @@ def profile_password(profile: dict[str, Any]) -> str:
     return profile.get("password", "")
 
 
+def mark_managed_connection(
+    connection_name: str,
+    profile: dict[str, Any],
+    config: dict[str, Any],
+    logger: logging.Logger,
+) -> None:
+    """Best-effort NetworkManager ownership metadata for strict-prune safety."""
+    timeout = int(config.get("connect_timeout_sec", 10)) + 2
+    profile_id = str(profile.get("id") or profile.get("ssid") or connection_name)
+    command = [
+        "timeout",
+        str(timeout),
+        "nmcli",
+        "connection",
+        "modify",
+        connection_name,
+        "connection.user-data",
+        f"smart-wifi-manager.managed=true,smart-wifi-manager.profile-id={profile_id}",
+    ]
+    code, stdout, stderr = run_command(command, logger, timeout=timeout)
+    if code != 0:
+        logger.debug(
+            "NetworkManager managed metadata not applied for %s: %s",
+            connection_name,
+            stderr or stdout,
+        )
+
+
 def connect_profile(interface: str | None, profile: dict[str, Any], config: dict[str, Any], logger: logging.Logger) -> tuple[bool, str]:
     if not interface:
         return False, "No Wi-Fi interface available"
@@ -435,6 +525,7 @@ def connect_profile(interface: str | None, profile: dict[str, Any], config: dict
         code, stdout, stderr = run_command(command, logger, timeout=config["connect_timeout_sec"] + 2)
         if code == 0:
             if activates_connection:
+                mark_managed_connection(connection_name, profile, config, logger)
                 return True, stdout or f"Connected to {ssid}"
             continue
         last_message = stderr or stdout
@@ -612,6 +703,93 @@ def print_json(path: Path, redacted: bool = False) -> int:
     return 0
 
 
+def _print_payload(payload: dict[str, Any]) -> int:
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0
+
+
+def profile_list_command(args: argparse.Namespace) -> int:
+    config_path = Path(args.config)
+    status_path = Path(args.status_file)
+    payload = profile_summary(
+        load_config(config_path),
+        path=str(config_path),
+        status=load_status(status_path),
+    )
+    return _print_payload(payload)
+
+
+def profile_export_command(args: argparse.Namespace) -> int:
+    config = load_config(Path(args.config))
+    payload = config if args.include_secrets else redacted_config(config)
+    return _print_payload(payload)
+
+
+def profile_validate_command(args: argparse.Namespace) -> int:
+    bundle_path = Path(args.file)
+    payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    result = validate_bundle(payload)
+    _print_payload(result)
+    return 0 if result["valid"] else 1
+
+
+def profile_diff_command(args: argparse.Namespace) -> int:
+    local_config = load_config(Path(args.config))
+    baseline_config = load_config(Path(args.baseline))
+    return _print_payload(profile_diff(local_config, baseline_config, mode=args.mode))
+
+
+def profile_import_command(args: argparse.Namespace) -> int:
+    if not args.dry_run:
+        raise ValueError("profile import requires --dry-run; use profile apply with the confirmation token")
+    local_config = load_config(Path(args.config))
+    baseline_config = load_config(Path(args.file))
+    plan = dry_run_plan(
+        local_config,
+        baseline_config,
+        mode=args.mode,
+        include_candidate=bool(args.output_plan),
+    )
+    if args.output_plan:
+        plan_path = Path(args.output_plan)
+        save_plan(plan_path, plan)
+        write_audit_entry(
+            Path(args.state_dir),
+            "profile-import-dry-run",
+            {"mode": args.mode, "dry_run_id": plan["dry_run_id"], "plan_path": str(plan_path)},
+        )
+    return _print_payload(redacted_plan(plan))
+
+
+def profile_apply_command(args: argparse.Namespace) -> int:
+    result = apply_plan_file(Path(args.plan), Path(args.config), confirm=args.confirm)
+    write_audit_entry(
+        Path(args.state_dir),
+        "profile-apply",
+        {
+            "mode": result["mode"],
+            "dry_run_id": result["dry_run_id"],
+            "candidate_hash": result["candidate_hash"],
+        },
+    )
+    return _print_payload(result)
+
+
+def profile_promote_command(args: argparse.Namespace) -> int:
+    config = load_config(Path(args.config))
+    draft = promote_reference_draft(config, redacted=args.redacted)
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(draft, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        write_audit_entry(
+            Path(args.state_dir),
+            "profile-promote-reference-draft",
+            {"output": str(output_path), "hash": draft["summary"]["hash"]},
+        )
+    return _print_payload(draft)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Smart Wi-Fi Manager")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -630,6 +808,46 @@ def build_parser() -> argparse.ArgumentParser:
     print_parser = subparsers.add_parser("print-config", help="Print config and exit")
     print_parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     print_parser.add_argument("--redacted", action="store_true")
+
+    profile_parser = subparsers.add_parser("profile", help="Profile control commands")
+    profile_subparsers = profile_parser.add_subparsers(dest="profile_command", required=True)
+
+    profile_list_parser = profile_subparsers.add_parser("list", help="List redacted profile summary")
+    profile_list_parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    profile_list_parser.add_argument("--status-file", default=str(DEFAULT_STATUS_PATH))
+
+    profile_export_parser = profile_subparsers.add_parser("export", help="Export profile bundle")
+    profile_export_parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    profile_export_parser.add_argument("--redacted", action="store_true", help="Deprecated; profile export is redacted by default")
+    profile_export_parser.add_argument("--include-secrets", action="store_true", help="Include raw secrets for local private backup only")
+
+    profile_validate_parser = profile_subparsers.add_parser("validate", help="Validate profile bundle")
+    profile_validate_parser.add_argument("--file", required=True)
+
+    profile_diff_parser = profile_subparsers.add_parser("diff", help="Diff baseline against local profile")
+    profile_diff_parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    profile_diff_parser.add_argument("--baseline", required=True)
+    profile_diff_parser.add_argument("--mode", default="fleet-merge")
+
+    profile_import_parser = profile_subparsers.add_parser("import", help="Dry-run a profile import")
+    profile_import_parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    profile_import_parser.add_argument("--file", required=True)
+    profile_import_parser.add_argument("--mode", default="fleet-merge")
+    profile_import_parser.add_argument("--dry-run", action="store_true")
+    profile_import_parser.add_argument("--output-plan", default=str(DEFAULT_PROFILE_PLAN_PATH))
+    profile_import_parser.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
+
+    profile_apply_parser = profile_subparsers.add_parser("apply", help="Apply a confirmed dry-run plan")
+    profile_apply_parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    profile_apply_parser.add_argument("--plan", required=True)
+    profile_apply_parser.add_argument("--confirm", required=True)
+    profile_apply_parser.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
+
+    profile_promote_parser = profile_subparsers.add_parser("promote", help="Promote local profile as reference draft")
+    profile_promote_parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    profile_promote_parser.add_argument("--redacted", action="store_true", default=True)
+    profile_promote_parser.add_argument("--output")
+    profile_promote_parser.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
 
     version_parser = subparsers.add_parser("version", help="Print version")
     version_parser.set_defaults(version=True)
@@ -654,6 +872,22 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "print-config":
         return print_json(config_path, redacted=bool(args.redacted))
+
+    if args.command == "profile":
+        if args.profile_command == "list":
+            return profile_list_command(args)
+        if args.profile_command == "export":
+            return profile_export_command(args)
+        if args.profile_command == "validate":
+            return profile_validate_command(args)
+        if args.profile_command == "diff":
+            return profile_diff_command(args)
+        if args.profile_command == "import":
+            return profile_import_command(args)
+        if args.profile_command == "apply":
+            return profile_apply_command(args)
+        if args.profile_command == "promote":
+            return profile_promote_command(args)
 
     if args.command == "run":
         return service_loop(

@@ -530,6 +530,13 @@
       return `<span class="badge ${cls}">${escapeHTML(label)}</span>`;
     }
 
+    function profileSecretStatus(profile) {
+      if (profile.secret_status) return profile.secret_status;
+      if (profile.password_file) return "external file";
+      if (profile.has_inline_password) return "stored";
+      return "missing";
+    }
+
     function renderStatus() {
       const status = state.status || {};
       const badges = [];
@@ -607,8 +614,7 @@
             ${badge(`priority ${priority}`, "good")}
             ${disabled ? badge("disabled", "warn") : badge("enabled", "good")}
             ${current ? badge("current", "good") : ""}
-            ${profile.has_inline_password ? badge("password stored", "warn") : ""}
-            ${profile.password_file ? badge("password file", "") : ""}
+            ${badge(`secret:${profileSecretStatus(profile)}`, profileSecretStatus(profile) === "missing" ? "warn" : "")}
           </div>
           ${profile.notes ? `<p class="hint">${escapeHTML(profile.notes)}</p>` : ""}
         </div>

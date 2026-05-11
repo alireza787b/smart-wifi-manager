@@ -134,15 +134,46 @@ currently working management network, the host may become harder to reach.
 | `/api/status` | `GET` | Latest runtime status |
 | `/api/config` | `GET` | Redacted config |
 | `/api/config` | `PUT` | Replace current config from UI save |
-| `/api/config/export` | `GET` | Export full config |
+| `/api/config/export` | `GET` | Export redacted config |
 | `/api/config/import?mode=merge|replace` | `POST` | Import bundle |
 | `/api/actions/scan` | `POST` | Trigger immediate scan |
 | `/api/logs` | `GET` | Recent log lines |
+
+Fleet profile-control API:
+
+Remote mutating requests require `SMART_WIFI_MANAGER_API_TOKEN` and must send
+the value with `Authorization: Bearer ...` or `X-SWM-Profile-Token`. Loopback
+requests remain usable for local standalone operation when no token is set.
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/profiles/summary` | `GET` | Redacted profile summary, sanitized hash, service context, and secret status |
+| `/api/v1/profiles/export` | `GET` | Redacted profile export |
+| `/api/v1/profiles/validate` | `POST` | Validate a candidate profile bundle |
+| `/api/v1/profiles/diff` | `POST` | Compare candidate baseline against local profile |
+| `/api/v1/profiles/import` | `POST` | Create a dry-run import plan; requires `dry_run=true` |
+| `/api/v1/profiles/apply` | `POST` | Apply a stored dry-run plan with confirmation token |
+| `/api/v1/profiles/promote-reference-draft` | `POST` | Return a sanitized reference draft from this node |
+
+Supported profile policy modes:
+
+- `observe`
+- `local`
+- `fleet-merge`
+- `fleet-strict`
+
+Every mutating fleet profile workflow is dry-run first and apply second.
+`fleet-merge` preserves local profiles that are not in the baseline.
+`fleet-strict` is advanced/lab mode and requires an additional confirmation.
 
 ## Secret Handling
 
 - `password_file` paths are shown as paths
 - inline passwords are redacted from `GET /api/config`
+- v1 profile-control endpoints summarize secrets only as `stored`, `missing`,
+  `external file`, or `redacted`
+- secret fields such as passwords, PSKs, API keys, tokens, and private keys are
+  recursively redacted from profile-control summaries and exports
 - if the UI saves a profile with blank password, the existing inline password is preserved
 - explicit secret deletion should be handled by editing the config bundle or adding UI support later
 

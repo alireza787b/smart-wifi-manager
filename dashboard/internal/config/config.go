@@ -190,6 +190,9 @@ func Merge(existing Config, incoming Config, replace bool) Config {
 		if exists && incomingProfile.Password == "" && !incomingProfile.ClearInlineSecret {
 			incomingProfile.Password = existingProfile.Password
 		}
+		if exists && incomingProfile.PasswordFile == "" {
+			incomingProfile.PasswordFile = existingProfile.PasswordFile
+		}
 		if incomingProfile.ClearInlineSecret {
 			incomingProfile.Password = ""
 			incomingProfile.ClearInlineSecret = false
@@ -219,6 +222,9 @@ func ApplyUpdate(existing Config, incoming Config) Config {
 		existingProfile, exists := existingByID[profile.ID]
 		if exists && profile.Password == "" && !profile.ClearInlineSecret {
 			profile.Password = existingProfile.Password
+		}
+		if exists && profile.PasswordFile == "" {
+			profile.PasswordFile = existingProfile.PasswordFile
 		}
 		if profile.ClearInlineSecret {
 			profile.Password = ""

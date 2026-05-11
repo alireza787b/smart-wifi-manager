@@ -232,7 +232,7 @@ Main actions:
 - change priorities with immediate-save `Up`, `Down`, and `Prefer` actions
 - change runtime policy separately
 - import/merge/replace config bundles
-- export full config
+- export redacted config
 - trigger an immediate scan
 - read recent logs
 

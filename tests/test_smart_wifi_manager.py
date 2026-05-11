@@ -4,7 +4,8 @@ import json
 import logging
 
 import smart_wifi_manager
-from smart_wifi_manager import choose_target_profile, connect_profile, load_config, redacted_config
+from smart_wifi_manager import choose_target_profile, connect_profile, load_config, main, redacted_config
+from profile_control import dry_run_plan, profile_diff, profile_summary, validate_bundle
 
 
 def test_load_config_normalizes_and_sorts_profiles(tmp_path):
@@ -141,7 +142,17 @@ def test_connect_profile_repairs_secured_networkmanager_connection(monkeypatch):
         "ifname",
         "wlan0",
     ]
-    assert len(calls) == 2
+    assert calls[2] == [
+        "timeout",
+        "12",
+        "nmcli",
+        "connection",
+        "modify",
+        "FieldNet",
+        "connection.user-data",
+        "smart-wifi-manager.managed=true,smart-wifi-manager.profile-id=field",
+    ]
+    assert len(calls) == 3
 
 
 def test_connect_profile_creates_named_connection_after_repair_misses(monkeypatch):
@@ -168,7 +179,7 @@ def test_connect_profile_creates_named_connection_after_repair_misses(monkeypatc
 
     assert ok is True
     assert message == "connected"
-    assert calls[-1] == [
+    assert calls[-2] == [
         "timeout",
         "10",
         "nmcli",
@@ -183,4 +194,199 @@ def test_connect_profile_creates_named_connection_after_repair_misses(monkeypatc
         "name",
         "FieldNet",
     ]
-    assert len(calls) == 3
+    assert calls[-1] == [
+        "timeout",
+        "12",
+        "nmcli",
+        "connection",
+        "modify",
+        "FieldNet",
+        "connection.user-data",
+        "smart-wifi-manager.managed=true,smart-wifi-manager.profile-id=field",
+    ]
+    assert len(calls) == 4
+
+
+def test_profile_summary_hash_redacts_inline_passwords():
+    local = {
+        "version": 1,
+        "mode": "manage",
+        "profiles": [{"id": "field", "ssid": "DemoField", "priority": 100, "password": "one"}],
+    }
+    other = {
+        "version": 1,
+        "mode": "manage",
+        "profiles": [{"id": "field", "ssid": "DemoField", "priority": 100, "password": "two"}],
+    }
+
+    assert profile_summary(local)["hash"] == profile_summary(other)["hash"]
+    assert profile_summary(local)["secret_status"] == "stored"
+
+
+def test_profile_diff_fleet_merge_preserves_local_extra():
+    local = {
+        "profiles": [
+            {"id": "fleet", "ssid": "Fleet", "priority": 100},
+            {"id": "local", "ssid": "LocalEmergency", "priority": 10},
+        ]
+    }
+    baseline = {"profiles": [{"id": "fleet", "ssid": "Fleet", "priority": 100}]}
+
+    diff = profile_diff(local, baseline, mode="fleet-merge")
+
+    assert diff["drift_state"] == "local_extra"
+    assert diff["changes"]["preserve_local"] == ["local"]
+    assert diff["changes"]["strict_prune"] == []
+
+
+def test_profile_diff_fleet_merge_outdated_when_baseline_updates_and_local_extra():
+    local = {
+        "profiles": [
+            {"id": "fleet", "ssid": "Fleet", "priority": 10},
+            {"id": "local", "ssid": "LocalEmergency", "priority": 10},
+        ]
+    }
+    baseline = {"profiles": [{"id": "fleet", "ssid": "Fleet", "priority": 100}]}
+
+    diff = profile_diff(local, baseline, mode="fleet-merge")
+
+    assert diff["drift_state"] == "outdated"
+    assert diff["changes"]["preserve_local"] == ["local"]
+
+
+def test_profile_diff_fleet_strict_marks_prune_candidates():
+    local = {
+        "profiles": [
+            {"id": "fleet", "ssid": "Fleet", "priority": 100},
+            {"id": "local", "ssid": "LocalEmergency", "priority": 10},
+        ]
+    }
+    baseline = {"profiles": [{"id": "fleet", "ssid": "Fleet", "priority": 100}]}
+
+    diff = profile_diff(local, baseline, mode="fleet-strict")
+
+    assert diff["drift_state"] == "outdated"
+    assert diff["changes"]["strict_prune"] == ["local"]
+    assert "advanced confirmation" in diff["warnings"][0]
+
+
+def test_validate_bundle_reports_duplicate_ids():
+    result = validate_bundle(
+        {
+            "profiles": [
+                {"id": "field", "ssid": "Field", "priority": 100},
+                {"id": "field", "ssid": "Field2", "priority": 90},
+            ]
+        }
+    )
+
+    assert result["valid"] is False
+    assert "duplicate profile id: field" in result["errors"]
+
+
+def test_dry_run_plan_requires_confirmation_and_holds_candidate():
+    local = {
+        "profiles": [
+            {"id": "fleet", "ssid": "Fleet", "priority": 100},
+            {"id": "local", "ssid": "Local", "priority": 10},
+        ]
+    }
+    baseline = {"profiles": [{"id": "fleet", "ssid": "Fleet", "priority": 100}]}
+
+    plan = dry_run_plan(local, baseline, mode="fleet-merge", include_candidate=True)
+
+    assert plan["requires_confirmation"] is True
+    assert plan["diff"]["drift_state"] == "local_extra"
+    assert {profile["id"] for profile in plan["candidate_config"]["profiles"]} == {"fleet", "local"}
+
+
+def test_profile_cli_import_apply_roundtrip(tmp_path, capsys):
+    config_path = tmp_path / "config.json"
+    baseline_path = tmp_path / "baseline.json"
+    plan_path = tmp_path / "plan.json"
+    state_dir = tmp_path / "state"
+    config_path.write_text(
+        json.dumps({"version": 1, "mode": "manage", "profiles": [{"id": "local", "ssid": "Local", "priority": 10}]}),
+        encoding="utf-8",
+    )
+    baseline_path.write_text(
+        json.dumps({"version": 1, "mode": "manage", "profiles": [{"id": "fleet", "ssid": "Fleet", "priority": 100}]}),
+        encoding="utf-8",
+    )
+
+    assert main([
+        "profile",
+        "import",
+        "--config",
+        str(config_path),
+        "--file",
+        str(baseline_path),
+        "--mode",
+        "fleet-merge",
+        "--dry-run",
+        "--output-plan",
+        str(plan_path),
+        "--state-dir",
+        str(state_dir),
+    ]) == 0
+    out = json.loads(capsys.readouterr().out)
+    token = out["confirmation_token"]
+    assert out["diff"]["changes"]["preserve_local"] == ["local"]
+    assert plan_path.exists()
+
+    assert main([
+        "profile",
+        "apply",
+        "--config",
+        str(config_path),
+        "--plan",
+        str(plan_path),
+        "--confirm",
+        token,
+        "--state-dir",
+        str(state_dir),
+    ]) == 0
+    applied = json.loads(capsys.readouterr().out)
+    updated = load_config(config_path)
+    assert applied["applied"] is True
+    assert {profile["id"] for profile in updated["profiles"]} == {"fleet", "local"}
+    assert (state_dir / "audit" / "profile-control.jsonl").exists()
+
+
+def test_profile_cli_export_redacts_by_default(tmp_path, capsys):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"version": 1, "profiles": [{"id": "field", "ssid": "Field", "password": "secret-value"}]}),
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "export", "--config", str(config_path)]) == 0
+    exported = json.loads(capsys.readouterr().out)
+
+    assert exported["profiles"][0]["password"] == ""
+    assert exported["profiles"][0]["secret_status"] == "stored"
+    assert "secret-value" not in json.dumps(exported)
+
+
+def test_profile_cli_export_redacts_extra_secret_fields(tmp_path, capsys):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "profiles": [
+                    {"id": "field", "ssid": "Field", "password_file": "/run/private/pass", "metadata": {"token": "abc"}}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert main(["profile", "export", "--config", str(config_path)]) == 0
+    exported_text = capsys.readouterr().out
+    exported = json.loads(exported_text)
+
+    assert exported["profiles"][0]["password_file"] == ""
+    assert exported["profiles"][0]["secret_status"] == "external file"
+    assert "abc" not in exported_text
+    assert "/run/private/pass" not in exported_text
