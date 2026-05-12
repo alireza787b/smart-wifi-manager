@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,13 @@ type Server struct {
 }
 
 const dashboardTokenEnv = "SMART_WIFI_MANAGER_API_TOKEN"
+
+var (
+	logSecretSingleQuotedArg = regexp.MustCompile(`(?i)\b(802-11-wireless-security\.psk|password|passphrase|psk|secret|token)\b(\s+)'[^']*'`)
+	logSecretDoubleQuotedArg = regexp.MustCompile(`(?i)\b(802-11-wireless-security\.psk|password|passphrase|psk|secret|token)\b(\s+)"[^"]*"`)
+	logSecretBareArg         = regexp.MustCompile(`(?i)\b(802-11-wireless-security\.psk|password|passphrase|psk|secret|token)\b(\s+)[^ \t]+`)
+	logSecretAssignment      = regexp.MustCompile(`(?i)\b(password|passphrase|psk|secret|token)=([^ \t]+)`)
+)
 
 func NewServer(options Options) *Server {
 	return &Server{options: options, plans: map[string]map[string]any{}}
@@ -73,6 +81,21 @@ func decodeBody(r *http.Request, target any) error {
 		return errors.New("empty request body")
 	}
 	return json.Unmarshal(body, target)
+}
+
+func redactLogLine(line string) string {
+	redacted := logSecretSingleQuotedArg.ReplaceAllString(line, `${1}${2}'REDACTED'`)
+	redacted = logSecretDoubleQuotedArg.ReplaceAllString(redacted, `${1}${2}"REDACTED"`)
+	redacted = logSecretBareArg.ReplaceAllString(redacted, `${1}${2}REDACTED`)
+	return logSecretAssignment.ReplaceAllString(redacted, `${1}=REDACTED`)
+}
+
+func redactLogLines(lines []string) []string {
+	redacted := make([]string, len(lines))
+	for index, line := range lines {
+		redacted[index] = redactLogLine(line)
+	}
+	return redacted
 }
 
 func isLoopbackRemote(remoteAddr string) bool {
@@ -226,7 +249,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"log_path": s.options.LogPath,
-		"lines":    lines,
+		"lines":    redactLogLines(lines),
 	})
 }
 
@@ -360,6 +383,7 @@ type profileApplyRequest struct {
 	DryRunID     string `json:"dry_run_id"`
 	Confirmation struct {
 		Token             string `json:"token"`
+		ConfirmationToken string `json:"confirmation_token"`
 		AcknowledgedRisks bool   `json:"acknowledged_risks"`
 		AdvancedStrictAck bool   `json:"advanced_strict_ack"`
 		Operator          string `json:"operator"`
@@ -390,7 +414,11 @@ func (s *Server) handleProfileApply(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "dry-run plan not found"})
 		return
 	}
-	if plan["confirmation_token"] != req.Confirmation.Token {
+	confirmationToken := req.Confirmation.Token
+	if confirmationToken == "" {
+		confirmationToken = req.Confirmation.ConfirmationToken
+	}
+	if plan["confirmation_token"] != confirmationToken {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "confirmation token does not match dry-run plan"})
 		return
 	}

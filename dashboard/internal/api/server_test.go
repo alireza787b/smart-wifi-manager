@@ -140,6 +140,45 @@ func TestProfileImportDryRunThenApply(t *testing.T) {
 	}
 }
 
+func TestProfileApplyAcceptsConfirmationTokenAlias(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	controlDir := filepath.Join(dir, "control")
+	if err := os.WriteFile(configPath, []byte(`{"version":1,"mode":"manage","profiles":[{"id":"local","ssid":"LocalEmergency","priority":10}]}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	server := NewServer(Options{ConfigPath: configPath, ControlDir: controlDir})
+	body := []byte(`{"mode":"fleet-merge","dry_run":true,"baseline":{"version":1,"mode":"manage","profiles":[{"id":"fleet","ssid":"Fleet","priority":100}]}}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/profiles/import", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	serveLocal(server, rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var plan map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &plan); err != nil {
+		t.Fatalf("unmarshal plan: %v", err)
+	}
+
+	applyBody, _ := json.Marshal(map[string]any{
+		"dry_run_id": plan["dry_run_id"],
+		"confirmation": map[string]any{
+			"confirmation_token": plan["confirmation_token"],
+			"acknowledged_risks": true,
+			"operator":           "test",
+		},
+	})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/profiles/apply", bytes.NewReader(applyBody))
+	rec = httptest.NewRecorder()
+	serveLocal(server, rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestProfileImportRejectsRemoteWithoutToken(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.json")
@@ -249,6 +288,30 @@ func TestProfileApplyRejectsObserveNoMutationPlan(t *testing.T) {
 	serveLocal(server, rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for observe apply, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLogsRedactSecretArguments(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "smart-wifi.log")
+	if err := os.WriteFile(logPath, []byte("Executing command: nmcli dev wifi connect FieldNet password 'secret-value' 802-11-wireless-security.psk another-secret\n"), 0o600); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+	server := NewServer(Options{LogPath: logPath})
+	req := httptest.NewRequest(http.MethodGet, "/api/logs", nil)
+	rec := httptest.NewRecorder()
+	serveLocal(server, rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte("secret-value")) || bytes.Contains(rec.Body.Bytes(), []byte("another-secret")) {
+		t.Fatalf("logs leaked secret values: %s", rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("REDACTED")) {
+		t.Fatalf("expected redaction marker in log response: %s", rec.Body.String())
 	}
 }
 

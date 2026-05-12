@@ -62,6 +62,10 @@ EXTERNAL_SECRET_FIELD_NAMES = {
     "api_key_file",
     "private_key_file",
 }
+SENSITIVE_COMMAND_ARG_KEYS = SECRET_FIELD_NAMES | {
+    "802-11-wireless-security.psk",
+    "wifi-sec.psk",
+}
 
 
 def utc_now() -> str:
@@ -221,8 +225,29 @@ def load_status(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def redact_command_args(command: list[str]) -> list[str]:
+    redacted: list[str] = []
+    redact_next = False
+    for raw_part in command:
+        part = str(raw_part)
+        normalized = part.strip().lower().lstrip("-")
+        if redact_next:
+            redacted.append("REDACTED")
+            redact_next = False
+            continue
+        redacted.append(part)
+        if (
+            normalized in SENSITIVE_COMMAND_ARG_KEYS
+            or normalized.endswith(".psk")
+            or normalized.endswith("password")
+        ):
+            redact_next = True
+    return redacted
+
+
 def run_command(command: list[str], logger: logging.Logger, timeout: int = 15) -> tuple[int, str, str]:
-    logger.debug("Executing command: %s", " ".join(shlex.quote(part) for part in command))
+    safe_command = redact_command_args(command)
+    logger.debug("Executing command: %s", " ".join(shlex.quote(part) for part in safe_command))
     proc = subprocess.run(
         command,
         capture_output=True,

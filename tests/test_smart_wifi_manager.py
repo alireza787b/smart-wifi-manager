@@ -48,6 +48,27 @@ def test_redacted_config_hides_inline_passwords(tmp_path):
     assert redacted["profiles"][0]["has_inline_password"] is True
 
 
+def test_command_logging_redacts_password_arguments():
+    command = [
+        "nmcli",
+        "dev",
+        "wifi",
+        "connect",
+        "FieldNet",
+        "password",
+        "secret-value",
+        "802-11-wireless-security.psk",
+        "another-secret",
+    ]
+
+    redacted = smart_wifi_manager.redact_command_args(command)
+
+    assert "secret-value" not in redacted
+    assert "another-secret" not in redacted
+    assert redacted[6] == "REDACTED"
+    assert redacted[8] == "REDACTED"
+
+
 def test_choose_target_profile_prefers_higher_priority_then_signal():
     config = {
         "signal_switch_threshold": 20,
