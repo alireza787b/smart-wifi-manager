@@ -1,7 +1,15 @@
 # Smart Wi-Fi Manager
 
+**Field-ready Wi-Fi profile management for Linux drones, robots, and companion computers.**
+
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Linux](https://img.shields.io/badge/Linux-NetworkManager-36D399.svg)](https://networkmanager.dev/)
+[![Dashboard](https://img.shields.io/badge/dashboard-9080-20D6FF.svg)](docs/DASHBOARD.md)
+
 Smart Wi-Fi Manager keeps a Linux companion computer connected to the best
-available known Wi-Fi profile using NetworkManager (`nmcli`).
+available known Wi-Fi profile using NetworkManager (`nmcli`). It is designed for
+field robots and PX4/MAVLink companion computers where network priority,
+fallback, and operator recovery must be explicit.
 
 It is built as a standalone product:
 
@@ -12,8 +20,17 @@ It is built as a standalone product:
 - file-based status and control surfaces for AI agents and automation
 - release-built dashboard binaries with local source-build fallback
 
-This repo is intentionally **not MDS-specific**. MDS can integrate it later as
-an optional connectivity backend, but the tool stands on its own.
+This repo is intentionally **not MDS-specific**. MDS can integrate it as an
+optional connectivity backend, but the tool stands on its own for Raspberry Pi,
+Ubuntu, and other NetworkManager-based Linux systems.
+
+## Ecosystem Fit
+
+| Tool | Role |
+|------|------|
+| **Smart Wi-Fi Manager** | Wi-Fi scanning, known-profile priority, dashboard/CLI repair |
+| **[MDS](https://github.com/alireza787b/mavsdk_drone_show)** | fleet operations, SITL, real drone dashboard, sidecar profile status |
+| **[MAVLink Anywhere](https://github.com/alireza787b/mavlink-anywhere)** | MAVLink telemetry routing over Wi-Fi/LTE/VPN/serial |
 
 ## Dashboard Preview
 
@@ -86,6 +103,9 @@ Expose the dashboard on the LAN or VPN only if you actually want remote access:
 ```bash
 sudo ./install.sh --dashboard-listen 0.0.0.0:9080
 ```
+
+Do not expose the dashboard to a public network without VPN, firewall, reverse
+proxy, or future sidecar auth hardening.
 
 ### 3. Configure
 
