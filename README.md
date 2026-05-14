@@ -2,7 +2,10 @@
 
 **Field-ready Wi-Fi profile management for Linux drones, robots, and companion computers.**
 
+![Smart Wi-Fi Manager logo](assets/brand/smart-wifi-logo.svg)
+
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-2.1.11-blue.svg)](VERSION)
 [![Linux](https://img.shields.io/badge/Linux-NetworkManager-36D399.svg)](https://networkmanager.dev/)
 [![Dashboard](https://img.shields.io/badge/dashboard-9080-20D6FF.svg)](docs/DASHBOARD.md)
 

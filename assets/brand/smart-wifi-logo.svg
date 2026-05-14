@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" role="img" aria-labelledby="title desc">
+  <title id="title">Smart Wi-Fi Manager</title>
+  <desc id="desc">Smart Wi-Fi Manager wordmark with minimal signal module mark.</desc>
+  <rect width="120" height="120" rx="28" fill="#09111c"/>
+  <rect x="48" y="72" width="24" height="24" rx="6" fill="#f8fbff"/>
+  <path d="M39 60c13-13 29-13 42 0" fill="none" stroke="#36d399" stroke-width="8" stroke-linecap="round"/>
+  <path d="M27 44c20-20 46-20 66 0" fill="none" stroke="#36d399" stroke-width="8" stroke-linecap="round"/>
+  <path d="M60 96v12" stroke="#20d6ff" stroke-width="6" stroke-linecap="round"/>
+  <text x="148" y="60" fill="#09111c" font-family="Arial, Helvetica, sans-serif" font-size="46" font-weight="900" letter-spacing="-2">Smart Wi-Fi</text>
+  <text x="150" y="92" fill="#536173" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" letter-spacing="4">FIELD CONNECTIVITY</text>
+</svg>

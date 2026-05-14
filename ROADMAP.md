@@ -16,10 +16,11 @@ computers, drones, and robots.
 - optional sidecar dashboard/API auth design
 - Caddy/reverse-proxy guidance for trusted multi-dashboard deployments
 - stronger CLI workflows for field recovery and automation
+- richer MDS Fleet Ops profile handoff examples for large fleets
 
 ## Later
 
 - encrypted fleet Wi-Fi profile distribution
 - advanced audit logs for profile changes
 - richer multi-interface policy for Wi-Fi, Ethernet, LTE/USB modem, and VPN
-
+- optional agent/MCP-friendly status and repair workflows for fleet automation
